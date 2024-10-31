@@ -18,6 +18,12 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
+// Get contribution.
+//
+//	  @Summary Get a contribution
+//		 @Description Retrieve a contribution from the data store.
+//		 @Param c
+//		 @Param id
 func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) {
 	_, span := otel.Tracer("contribution").Start(c, "db-get-contribution", oteltrace.WithAttributes(attribute.String("id", id)))
 	model, err := database.Get[models.Contribution]("contributions", id)
