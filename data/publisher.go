@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	apicore "github.com/sweetrpg/api-core/constants"
-	"github.com/sweetrpg/catalog-api/util"
+	"github.com/sweetrpg/api-core/tracing"
 	"github.com/sweetrpg/catalog-objects/models"
 	"github.com/sweetrpg/catalog-objects/vo"
 	"github.com/sweetrpg/common/logging"
@@ -52,7 +52,7 @@ func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) {
 }
 
 func GetPublishers(c context.Context, filter bson.D, options options.Options) ([]*vo.PublisherVO, error) {
-	span := util.BuildSpanWithOptions(c, "publishers", "db-get-publishers", options)
+	span := tracing.BuildSpanWithOptions(c, "publishers", "db-get-publishers", options)
 	models, err := database.Query[models.Publisher]("publishers", filter, "_id", options.Page[apicore.PageStartOption], options.Page[apicore.PageLimitOption])
 	span.End()
 	if err != nil {

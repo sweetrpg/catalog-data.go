@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	apicore "github.com/sweetrpg/api-core/constants"
-	"github.com/sweetrpg/catalog-api/util"
+	"github.com/sweetrpg/api-core/tracing"
 	"github.com/sweetrpg/catalog-objects/models"
 	"github.com/sweetrpg/catalog-objects/vo"
 	"github.com/sweetrpg/common/logging"
@@ -57,7 +57,7 @@ func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) {
 }
 
 func GetLicenses(c context.Context, filter bson.D, options options.Options) ([]*vo.LicenseVO, error) {
-	span := util.BuildSpanWithOptions(c, "licenses", "db-get-licenses", options)
+	span := tracing.BuildSpanWithOptions(c, "licenses", "db-get-licenses", options)
 	models, err := database.Query[models.License]("licenses", filter, "_id", options.Page[apicore.PageStartOption], options.Page[apicore.PageLimitOption])
 	span.End()
 	if err != nil {

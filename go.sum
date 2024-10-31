@@ -25,8 +25,6 @@ github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsT
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/sweetrpg/api-core v0.0.344 h1:KrY9zBFL+uHJIPGcnoKOoX+qWYSCejVFM76dFJbOHCQ=
 github.com/sweetrpg/api-core v0.0.344/go.mod h1:T33pHuX5KCjmAVtSLmsIRi/Okl3q+CykZgJAO66ekQo=
-github.com/sweetrpg/catalog-api v0.0.0-20241029155018-a22b3c7af3c9 h1:2Gho0sPrS4Z93IQKnIc3a7wC8hlyFBCT05iSBkbgL1I=
-github.com/sweetrpg/catalog-api v0.0.0-20241029155018-a22b3c7af3c9/go.mod h1:bAibnwc9U5jGG37Bqwq99AyFxGHXk4RKooAU5HSTlKQ=
 github.com/sweetrpg/catalog-objects v0.0.176 h1:GoZjr7YVKue1DgLgZ0bL+XOvpYmT5aSWtUT9CT/1jVY=
 github.com/sweetrpg/catalog-objects v0.0.176/go.mod h1:C8+kERpwESN6pp937patqB99dfALG9nHrQlvsdSaqI0=
 github.com/sweetrpg/common v0.0.2 h1:mck63Q0ifENqM2/luS4uPT4zt5wb2IfY/h9WQucpuI0=

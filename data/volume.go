@@ -5,10 +5,11 @@ import (
 	"fmt"
 
 	apicore "github.com/sweetrpg/api-core/constants"
-	"github.com/sweetrpg/catalog-api/util"
+	"github.com/sweetrpg/api-core/tracing"
 	"github.com/sweetrpg/catalog-objects/models"
 	"github.com/sweetrpg/catalog-objects/vo"
 	"github.com/sweetrpg/common/logging"
+	"github.com/sweetrpg/common/util"
 	"github.com/sweetrpg/db/database"
 	modelcorevo "github.com/sweetrpg/model-core/vo"
 	options "go.jtlabs.io/query"
@@ -84,7 +85,7 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 }
 
 func GetVolumes(c context.Context, filter bson.D, options options.Options) ([]*vo.VolumeVO, error) {
-	span := util.BuildSpanWithOptions(c, "volumes", "db-get-volumes", options)
+	span := tracing.BuildSpanWithOptions(c, "volumes", "db-get-volumes", options)
 	models, err := database.Query[models.Volume]("volumes", filter, "_id", options.Page[apicore.PageStartOption], options.Page[apicore.PageLimitOption])
 	span.End()
 	if err != nil {

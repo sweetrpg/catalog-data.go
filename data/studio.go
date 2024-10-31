@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	apicore "github.com/sweetrpg/api-core/constants"
-	"github.com/sweetrpg/catalog-api/util"
+	"github.com/sweetrpg/api-core/tracing"
 	"github.com/sweetrpg/catalog-objects/models"
 	"github.com/sweetrpg/catalog-objects/vo"
 	"github.com/sweetrpg/common/logging"
@@ -51,7 +51,7 @@ func GetStudio(c context.Context, id string) (*vo.StudioVO, error) {
 }
 
 func GetStudios(c context.Context, filter bson.D, options options.Options) ([]*vo.StudioVO, error) {
-	span := util.BuildSpanWithOptions(c, "studios", "db-get-studios", options)
+	span := tracing.BuildSpanWithOptions(c, "studios", "db-get-studios", options)
 	models, err := database.Query[models.Studio]("studios", filter, "_id", options.Page[apicore.PageStartOption], options.Page[apicore.PageLimitOption])
 	span.End()
 	if err != nil {

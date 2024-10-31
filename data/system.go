@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	apicore "github.com/sweetrpg/api-core/constants"
-	"github.com/sweetrpg/catalog-api/util"
+	"github.com/sweetrpg/api-core/tracing"
 	"github.com/sweetrpg/catalog-objects/models"
 	"github.com/sweetrpg/catalog-objects/vo"
 	"github.com/sweetrpg/common/logging"
@@ -50,7 +50,7 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) {
 }
 
 func GetSystems(c context.Context, filter bson.D, options options.Options) ([]*vo.SystemVO, error) {
-	span := util.BuildSpanWithOptions(c, "systems", "db-get-systems", options)
+	span := tracing.BuildSpanWithOptions(c, "systems", "db-get-systems", options)
 	models, err := database.Query[models.System]("systems", filter, "_id", options.Page[apicore.PageStartOption], options.Page[apicore.PageLimitOption])
 	span.End()
 	if err != nil {

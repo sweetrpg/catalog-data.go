@@ -4,7 +4,6 @@ go 1.23.2
 
 require (
 	github.com/sweetrpg/api-core v0.0.344
-	github.com/sweetrpg/catalog-api v0.0.0-20241029155018-a22b3c7af3c9
 	github.com/sweetrpg/catalog-objects v0.0.176
 	github.com/sweetrpg/common v0.0.2
 	github.com/sweetrpg/db v0.0.146
