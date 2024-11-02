@@ -3,10 +3,10 @@ module github.com/sweetrpg/catalog-data
 go 1.23.2
 
 require (
-	github.com/sweetrpg/api-core v0.0.347
+	github.com/sweetrpg/api-core v0.0.349
 	github.com/sweetrpg/catalog-objects v0.0.176
-	github.com/sweetrpg/common v0.0.3
-	github.com/sweetrpg/db v0.0.146
+	github.com/sweetrpg/common v0.0.4
+	github.com/sweetrpg/db v0.0.147
 	github.com/sweetrpg/model-core v0.0.157
 	go.jtlabs.io/query v1.6.1
 	go.mongodb.org/mongo-driver v1.17.1
@@ -20,7 +20,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.23.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
