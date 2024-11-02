@@ -23,8 +23,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
-github.com/sweetrpg/api-core v0.0.349 h1:seruMLk6lKVM59uGMTwICMYMqaOfxkqkeywzTVIavd8=
-github.com/sweetrpg/api-core v0.0.349/go.mod h1:P7+IbnfOZ9LwIPQmtIUTziU2k9A1y9EDX3OIxmasHDk=
+github.com/sweetrpg/api-core v0.0.350 h1:tqEVYz+1jMcVdLmEQHjo/LnT4CsQxvtzN90uy3CLoG4=
+github.com/sweetrpg/api-core v0.0.350/go.mod h1:P7+IbnfOZ9LwIPQmtIUTziU2k9A1y9EDX3OIxmasHDk=
 github.com/sweetrpg/catalog-objects v0.0.176 h1:GoZjr7YVKue1DgLgZ0bL+XOvpYmT5aSWtUT9CT/1jVY=
 github.com/sweetrpg/catalog-objects v0.0.176/go.mod h1:C8+kERpwESN6pp937patqB99dfALG9nHrQlvsdSaqI0=
 github.com/sweetrpg/common v0.0.4 h1:fK/HwZUTLUNhzmPaHOurbqffF0k6+uIRVEf99Z7/plQ=
