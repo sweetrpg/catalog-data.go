@@ -9,6 +9,7 @@ on:
     repository_dispatch:
         types:
             - common-published
+            - catalog-objects-published
 
 jobs:
     tests:
