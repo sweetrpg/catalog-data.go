@@ -29,8 +29,8 @@ github.com/sweetrpg/catalog-objects v0.0.183 h1:QpJFRfn5kwsgVxSBgkc0tNe+2FErnmpE
 github.com/sweetrpg/catalog-objects v0.0.183/go.mod h1:LCNkUeRvGJw0FxMS83p0WSqaj5kiOPXeK9e+9DYuEtQ=
 github.com/sweetrpg/common v0.0.7 h1:cAGLhGbfTWLVS9yV39wqr/oHvs8sM0sXsHBI+M+RiJU=
 github.com/sweetrpg/common v0.0.7/go.mod h1:4yamZns+1PmHHYPgJh+X8JuQoF4uTZNZEcnkwUEbauY=
-github.com/sweetrpg/db v0.0.153 h1:Z4uxgYAJONl9ZqDF3iy3zPCpK+mHsqPo58aLCMqZu1o=
-github.com/sweetrpg/db v0.0.153/go.mod h1:kZuCF2r9CqyFgGoUmCaPjPjjNf5CJ/8epjqOI4GoBUQ=
+github.com/sweetrpg/db v0.0.154 h1:xArkVTDE6Bvu04KYfgvG8dI6ul+U1xV4vrMceHMZBek=
+github.com/sweetrpg/db v0.0.154/go.mod h1:kZuCF2r9CqyFgGoUmCaPjPjjNf5CJ/8epjqOI4GoBUQ=
 github.com/sweetrpg/model-core v0.0.159 h1:lChVDMNWEdMPSP4L8pUPFyiWcxlGZh4iDeOQgu+jD7Q=
 github.com/sweetrpg/model-core v0.0.159/go.mod h1:THbmvZVpQXPl27C4U1shWs4lm6twKBJZWVIMWM3clqM=
 github.com/xdg-go/pbkdf2 v1.0.0 h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=
