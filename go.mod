@@ -3,7 +3,7 @@ module github.com/sweetrpg/catalog-data
 go 1.23.2
 
 require (
-	github.com/sweetrpg/api-core v0.0.354
+	github.com/sweetrpg/api-core v0.0.356
 	github.com/sweetrpg/catalog-objects v0.0.182
 	github.com/sweetrpg/common v0.0.7
 	github.com/sweetrpg/db v0.0.150
