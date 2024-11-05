@@ -4,15 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	apicore "github.com/sweetrpg/api-core/constants"
 	"github.com/sweetrpg/api-core/tracing"
+	apiutil "github.com/sweetrpg/api-core/util"
 	"github.com/sweetrpg/catalog-objects/models"
 	"github.com/sweetrpg/catalog-objects/vo"
 	"github.com/sweetrpg/common/logging"
 	"github.com/sweetrpg/common/util"
 	"github.com/sweetrpg/db/database"
 	modelcorevo "github.com/sweetrpg/model-core/vo"
-	options "go.jtlabs.io/query"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -84,9 +83,10 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 	}, nil
 }
 
-func GetVolumes(c context.Context, filter bson.D, options options.Options) ([]*vo.VolumeVO, error) {
-	span := tracing.BuildSpanWithOptions(c, "volumes", "db-get-volumes", options)
-	models, err := database.Query[models.Volume]("volumes", filter, "_id", options.Page[apicore.PageStartOption], options.Page[apicore.PageLimitOption])
+func GetVolumes(c context.Context, filter bson.D, params apiutil.QueryParams) ([]*vo.VolumeVO, error) {
+	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+	filter, sort, projection := apiutil.ConvertQueryParams(params)
+	models, err := database.Query[models.Volume]("volumes", filter, sort, projection, params.Start, params.Limit)
 	span.End()
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("Error while querying database for Volumes: %v", err))

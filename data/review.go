@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	apicore "github.com/sweetrpg/api-core/constants"
 	"github.com/sweetrpg/api-core/tracing"
+	apiutil "github.com/sweetrpg/api-core/util"
 	"github.com/sweetrpg/catalog-objects/models"
 	"github.com/sweetrpg/catalog-objects/vo"
 	"github.com/sweetrpg/common/logging"
 	"github.com/sweetrpg/db/database"
 	modelcorevo "github.com/sweetrpg/model-core/vo"
-	options "go.jtlabs.io/query"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -55,9 +54,10 @@ func GetReview(c context.Context, id string) (*vo.ReviewVO, error) {
 	}, nil
 }
 
-func GetReviews(c context.Context, filter bson.D, options options.Options) ([]*vo.ReviewVO, error) {
-	span := tracing.BuildSpanWithOptions(c, "reviews", "db-get-reviews", options)
-	models, err := database.Query[models.Review]("reviews", filter, "_id", options.Page[apicore.PageStartOption], options.Page[apicore.PageLimitOption])
+func GetReviews(c context.Context, filter bson.D, params apiutil.QueryParams) ([]*vo.ReviewVO, error) {
+	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+	filter, sort, projection := apiutil.ConvertQueryParams(params)
+	models, err := database.Query[models.Review]("reviews", filter, sort, projection, params.Start, params.Limit)
 	span.End()
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("Error while querying database for Reviews: %v", err))

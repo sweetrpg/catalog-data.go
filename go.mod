@@ -3,12 +3,11 @@ module github.com/sweetrpg/catalog-data
 go 1.23.2
 
 require (
-	github.com/sweetrpg/api-core v0.0.357
-	github.com/sweetrpg/catalog-objects v0.0.182
+	github.com/sweetrpg/api-core v0.0.359
+	github.com/sweetrpg/catalog-objects v0.0.183
 	github.com/sweetrpg/common v0.0.7
 	github.com/sweetrpg/db v0.0.152
 	github.com/sweetrpg/model-core v0.0.159
-	go.jtlabs.io/query v1.6.1
 	go.mongodb.org/mongo-driver v1.17.1
 	go.opentelemetry.io/otel v1.31.0
 	go.opentelemetry.io/otel/trace v1.31.0
@@ -28,6 +27,7 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	github.com/zerodha/logf v0.5.5 // indirect
+	go.jtlabs.io/query v1.6.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.31.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.31.0 // indirect
 	go.opentelemetry.io/otel/metric v1.31.0 // indirect

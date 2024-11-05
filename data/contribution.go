@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	apicore "github.com/sweetrpg/api-core/constants"
 	"github.com/sweetrpg/api-core/tracing"
 	apiutil "github.com/sweetrpg/api-core/util"
 	"github.com/sweetrpg/catalog-objects/models"
@@ -58,7 +57,7 @@ func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) {
 
 func GetContributions(c context.Context, params apiutil.QueryParams) ([]*vo.ContributionVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
-	filter, sort, projection := apicore.ConvertQueryParams(params)
+	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	models, err := database.Query[models.Contribution]("contributions", filter, sort, projection, params.Start, params.Limit)
 	span.End()
 	if err != nil {
