@@ -6,7 +6,7 @@ require (
 	github.com/sweetrpg/api-core v0.0.357
 	github.com/sweetrpg/catalog-objects v0.0.182
 	github.com/sweetrpg/common v0.0.7
-	github.com/sweetrpg/db v0.0.150
+	github.com/sweetrpg/db v0.0.152
 	github.com/sweetrpg/model-core v0.0.159
 	go.jtlabs.io/query v1.6.1
 	go.mongodb.org/mongo-driver v1.17.1
