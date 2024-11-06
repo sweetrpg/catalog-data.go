@@ -11,7 +11,6 @@ import (
 	"github.com/sweetrpg/common/logging"
 	"github.com/sweetrpg/db/database"
 	modelcorevo "github.com/sweetrpg/model-core/vo"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -49,7 +48,7 @@ func GetStudio(c context.Context, id string) (*vo.StudioVO, error) {
 	}, nil
 }
 
-func GetStudios(c context.Context, filter bson.D, params apiutil.QueryParams) ([]*vo.StudioVO, error) {
+func GetStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	models, err := database.Query[models.Studio]("studios", filter, sort, projection, params.Start, params.Limit)
