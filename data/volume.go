@@ -12,6 +12,7 @@ import (
 	"github.com/sweetrpg/common/util"
 	"github.com/sweetrpg/db/database"
 	modelcorevo "github.com/sweetrpg/model-core/vo"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -19,7 +20,12 @@ import (
 
 func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 	_, span := otel.Tracer("volume").Start(c, "db-get-volume", oteltrace.WithAttributes(attribute.String("id", id)))
-	model, err := database.Get[models.Volume]("volumes", id)
+	objectId, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+		return nil, err
+	}
+	model, err := database.Get[models.Volume]("volumes", objectId)
 	span.End()
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("Error while querying database for Volume: %v", err))

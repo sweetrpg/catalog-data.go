@@ -11,6 +11,7 @@ import (
 	"github.com/sweetrpg/common/logging"
 	"github.com/sweetrpg/db/database"
 	modelcorevo "github.com/sweetrpg/model-core/vo"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -24,15 +25,20 @@ import (
 //		 @Param id
 func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) {
 	_, span := otel.Tracer("contribution").Start(c, "db-get-contribution", oteltrace.WithAttributes(attribute.String("id", id)))
-	model, err := database.Get[models.Contribution]("contributions", id)
+	objectId, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+		return nil, err
+	}
+	model, err := database.Get[models.Contribution]("contributions", objectId)
 	span.End()
 	if err != nil {
-		logging.Logger.Error(fmt.Sprintf("Error while querying database for Contribution: %v", err))
+		logging.Logger.Error("Error while querying database for Contribution", "error", err)
 		return nil, err
 	}
 
 	if model == nil {
-		logging.Logger.Info(fmt.Sprintf("Contribution not found for ID: %s", id))
+		logging.Logger.Info("Contribution not found for ID", "id", id)
 		return nil, nil
 	}
 

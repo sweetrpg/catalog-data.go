@@ -11,6 +11,7 @@ import (
 	"github.com/sweetrpg/common/logging"
 	"github.com/sweetrpg/db/database"
 	modelcorevo "github.com/sweetrpg/model-core/vo"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -18,7 +19,12 @@ import (
 
 func GetStudio(c context.Context, id string) (*vo.StudioVO, error) {
 	_, span := otel.Tracer("studio").Start(c, "db-get-studio", oteltrace.WithAttributes(attribute.String("id", id)))
-	model, err := database.Get[models.Studio]("studios", id)
+	objectId, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+		return nil, err
+	}
+	model, err := database.Get[models.Studio]("studios", objectId)
 	span.End()
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("Error while querying database for Studio: %v", err))
