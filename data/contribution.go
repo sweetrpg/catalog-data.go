@@ -16,7 +16,7 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-// Get contribution.
+// Get a single contribution.
 //
 //	  @Summary Get a contribution
 //		 @Description Retrieve a contribution from the data store.
@@ -55,6 +55,12 @@ func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) {
 	}, nil
 }
 
+// Get many contributions.
+//
+//	@Summary Query the datastore for contributions.
+//	@Description Given a set of parameters, query the datastore for contributions that match.
+//	@Param c A Context object
+//	@Param params A QueryParams object that contains the parameters for the query
 func GetContributions(c context.Context, params apiutil.QueryParams) ([]*vo.ContributionVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
