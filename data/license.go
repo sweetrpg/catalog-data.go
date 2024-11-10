@@ -43,7 +43,7 @@ func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) {
 		Version:      model.Version,
 		Deed:         model.Deed,
 		LegalCode:    model.LegalCode,
-		URL:          model.URL,
+		Website:      model.Website,
 		Status:       model.Status,
 		Availability: model.Availability,
 		Notes:        model.Notes,
