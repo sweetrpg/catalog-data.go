@@ -3,7 +3,7 @@ module github.com/sweetrpg/catalog-data
 go 1.23.2
 
 require (
-	github.com/sweetrpg/api-core v0.0.361
+	github.com/sweetrpg/api-core v0.0.365
 	github.com/sweetrpg/catalog-objects v0.0.185
 	github.com/sweetrpg/common v0.0.7
 	github.com/sweetrpg/db v0.0.157
@@ -38,8 +38,8 @@ require (
 	golang.org/x/sync v0.9.0 // indirect
 	golang.org/x/sys v0.27.0 // indirect
 	golang.org/x/text v0.20.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20241104194629-dd2ea8efbc28 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241104194629-dd2ea8efbc28 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20241113202542-65e8d215514f // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241113202542-65e8d215514f // indirect
 	google.golang.org/grpc v1.68.0 // indirect
-	google.golang.org/protobuf v1.35.1 // indirect
+	google.golang.org/protobuf v1.35.2 // indirect
 )
