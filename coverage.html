@@ -1,0 +1,860 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>data: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/sweetrpg/catalog-data.go/data/contribution.go (0.0%)</option>
+				
+				<option value="file1">github.com/sweetrpg/catalog-data.go/data/license.go (0.0%)</option>
+				
+				<option value="file2">github.com/sweetrpg/catalog-data.go/data/person.go (0.0%)</option>
+				
+				<option value="file3">github.com/sweetrpg/catalog-data.go/data/publisher.go (0.0%)</option>
+				
+				<option value="file4">github.com/sweetrpg/catalog-data.go/data/review.go (0.0%)</option>
+				
+				<option value="file5">github.com/sweetrpg/catalog-data.go/data/studio.go (0.0%)</option>
+				
+				<option value="file6">github.com/sweetrpg/catalog-data.go/data/system.go (0.0%)</option>
+				
+				<option value="file7">github.com/sweetrpg/catalog-data.go/data/volume.go (0.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package data
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/sweetrpg/api-core.go/tracing"
+        apiutil "github.com/sweetrpg/api-core.go/util"
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        "github.com/sweetrpg/common.go/logging"
+        "github.com/sweetrpg/db.go/database"
+        modelcorevo "github.com/sweetrpg/model-core.go/vo"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        oteltrace "go.opentelemetry.io/otel/trace"
+)
+
+// Get a single contribution.
+//
+//          @Summary Get a contribution
+//                 @Description Retrieve a contribution from the data store.
+//                 @Param c
+//                 @Param id
+func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) <span class="cov0" title="0">{
+        _, span := otel.Tracer("contribution").Start(c, "db-get-contribution", oteltrace.WithAttributes(attribute.String("id", id)))
+        objectId, err := primitive.ObjectIDFromHex(id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">model, err := database.Get[models.Contribution]("contributions", objectId)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while querying database for Contribution", "error", err)
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">if model == nil </span><span class="cov0" title="0">{
+                logging.Logger.Info("Contribution not found for ID", "id", id)
+                return nil, nil
+        }</span>
+
+        <span class="cov0" title="0">personVO, _ := GetPerson(c, model.PersonId)
+        volumeVO, _ := GetVolume(c, model.VolumeId)
+
+        return &amp;vo.ContributionVO{
+                ID:     model.ID,
+                Person: personVO,
+                Volume: volumeVO,
+                Roles:  model.Roles,
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: model.CreatedAt,
+                        CreatedBy: model.CreatedBy,
+                        UpdatedAt: model.UpdatedAt,
+                        UpdatedBy: model.UpdatedBy,
+                        DeletedAt: model.DeletedAt,
+                        DeletedBy: model.DeletedBy,
+                },
+        }, nil</span>
+}
+
+// Get many contributions.
+//
+//        @Summary Query the datastore for contributions.
+//        @Description Given a set of parameters, query the datastore for contributions that match.
+//        @Param c A Context object
+//        @Param params A QueryParams object that contains the parameters for the query
+func GetContributions(c context.Context, params apiutil.QueryParams) ([]*vo.ContributionVO, error) <span class="cov0" title="0">{
+        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        models, err := database.Query[models.Contribution]("contributions", filter, sort, projection, params.Start, params.Limit)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Contributions: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">modelCount := len(models)
+        if modelCount == 0 </span><span class="cov0" title="0">{
+                // short-circuit if there's nothing to do
+                return make([]*vo.ContributionVO, 0), nil
+        }</span>
+
+        <span class="cov0" title="0">var vos []*vo.ContributionVO
+        for _, model := range models </span><span class="cov0" title="0">{
+                vo, err := GetContribution(c, model.ID)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No Contribution found from item in array for ID: %s", model.ID))
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, vo)</span>
+        }
+
+        <span class="cov0" title="0">return vos, err</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package data
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/sweetrpg/api-core.go/tracing"
+        apiutil "github.com/sweetrpg/api-core.go/util"
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        "github.com/sweetrpg/common.go/logging"
+        "github.com/sweetrpg/db.go/database"
+        modelcorevo "github.com/sweetrpg/model-core.go/vo"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        oteltrace "go.opentelemetry.io/otel/trace"
+)
+
+func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) <span class="cov0" title="0">{
+        _, span := otel.Tracer("license").Start(c, "db-get-license", oteltrace.WithAttributes(attribute.String("id", id)))
+        objectId, err := primitive.ObjectIDFromHex(id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">model, err := database.Get[models.License]("licenses", objectId)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for License: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">if model == nil </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("License not found for ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov0" title="0">return &amp;vo.LicenseVO{
+                ID:           model.ID,
+                Title:        model.Title,
+                ShortTitle:   model.ShortTitle,
+                Version:      model.Version,
+                Deed:         model.Deed,
+                LegalCode:    model.LegalCode,
+                Website:      model.Website,
+                Status:       model.Status,
+                Availability: model.Availability,
+                Notes:        model.Notes,
+                Properties:   modelcorevo.FromPropertyModels(model.Properties),
+                Tags:         modelcorevo.FromTagModels(model.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: model.CreatedAt,
+                        CreatedBy: model.CreatedBy,
+                        UpdatedAt: model.UpdatedAt,
+                        UpdatedBy: model.UpdatedBy,
+                        DeletedAt: model.DeletedAt,
+                        DeletedBy: model.DeletedBy,
+                },
+        }, nil</span>
+}
+
+func GetLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) <span class="cov0" title="0">{
+        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        models, err := database.Query[models.License]("licenses", filter, sort, projection, params.Start, params.Limit)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Licenses: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">modelCount := len(models)
+        if modelCount == 0 </span><span class="cov0" title="0">{
+                // short-circuit if there's nothing to do
+                return make([]*vo.LicenseVO, 0), nil
+        }</span>
+
+        <span class="cov0" title="0">var vos []*vo.LicenseVO
+        for _, model := range models </span><span class="cov0" title="0">{
+                vo, err := GetLicense(c, model.ID)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No License found from item in array for ID: %s", model.ID))
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, vo)</span>
+        }
+
+        <span class="cov0" title="0">return vos, err</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package data
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/sweetrpg/api-core.go/tracing"
+        apiutil "github.com/sweetrpg/api-core.go/util"
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        "github.com/sweetrpg/common.go/logging"
+        "github.com/sweetrpg/db.go/database"
+        modelcorevo "github.com/sweetrpg/model-core.go/vo"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        oteltrace "go.opentelemetry.io/otel/trace"
+)
+
+func GetPerson(c context.Context, id string) (*vo.PersonVO, error) <span class="cov0" title="0">{
+        _, span := otel.Tracer("person").Start(c, "db-get-person", oteltrace.WithAttributes(attribute.String("id", id)))
+        objectId, err := primitive.ObjectIDFromHex(id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">model, err := database.Get[models.Person]("persons", objectId)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Person: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">if model == nil </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("Person not found for ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov0" title="0">return &amp;vo.PersonVO{
+                ID:         model.ID,
+                Name:       model.Name,
+                Notes:      model.Notes,
+                Properties: modelcorevo.FromPropertyModels(model.Properties),
+                Tags:       modelcorevo.FromTagModels(model.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: model.CreatedAt,
+                        CreatedBy: model.CreatedBy,
+                        UpdatedAt: model.UpdatedAt,
+                        UpdatedBy: model.UpdatedBy,
+                        DeletedAt: model.DeletedAt,
+                        DeletedBy: model.DeletedBy,
+                },
+        }, nil</span>
+}
+
+func GetPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) <span class="cov0" title="0">{
+        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        models, err := database.Query[models.Person]("persons", filter, sort, projection, params.Start, params.Limit)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Persons: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">modelCount := len(models)
+        if modelCount == 0 </span><span class="cov0" title="0">{
+                // short-circuit if there's nothing to do
+                return make([]*vo.PersonVO, 0), nil
+        }</span>
+
+        <span class="cov0" title="0">var vos []*vo.PersonVO
+        for _, model := range models </span><span class="cov0" title="0">{
+                vo, err := GetPerson(c, model.ID)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No Person found from item in array for ID: %s", model.ID))
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, vo)</span>
+        }
+
+        <span class="cov0" title="0">return vos, err</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package data
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/sweetrpg/api-core.go/tracing"
+        apiutil "github.com/sweetrpg/api-core.go/util"
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        "github.com/sweetrpg/common.go/logging"
+        "github.com/sweetrpg/db.go/database"
+        modelcorevo "github.com/sweetrpg/model-core.go/vo"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        oteltrace "go.opentelemetry.io/otel/trace"
+)
+
+func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov0" title="0">{
+        _, span := otel.Tracer("publisher").Start(c, "db-get-publisher", oteltrace.WithAttributes(attribute.String("id", id)))
+        objectId, err := primitive.ObjectIDFromHex(id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">model, err := database.Get[models.Publisher]("publishers", objectId)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Publisher: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">if model == nil </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("Publisher not found for ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov0" title="0">return &amp;vo.PublisherVO{
+                ID:         model.ID,
+                Name:       model.Name,
+                Address:    model.Address,
+                Website:    model.Website,
+                Notes:      model.Notes,
+                Properties: modelcorevo.FromPropertyModels(model.Properties),
+                Tags:       modelcorevo.FromTagModels(model.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: model.CreatedAt,
+                        CreatedBy: model.CreatedBy,
+                        UpdatedAt: model.UpdatedAt,
+                        UpdatedBy: model.UpdatedBy,
+                        DeletedAt: model.DeletedAt,
+                        DeletedBy: model.DeletedBy,
+                },
+        }, nil</span>
+}
+
+func GetPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) <span class="cov0" title="0">{
+        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        models, err := database.Query[models.Publisher]("publishers", filter, sort, projection, params.Start, params.Limit)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Publishers: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">modelCount := len(models)
+        if modelCount == 0 </span><span class="cov0" title="0">{
+                // short-circuit if there's nothing to do
+                return make([]*vo.PublisherVO, 0), nil
+        }</span>
+
+        <span class="cov0" title="0">var vos []*vo.PublisherVO
+        for _, model := range models </span><span class="cov0" title="0">{
+                vo, err := GetPublisher(c, model.ID)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No Publisher found from item in array for ID: %s", model.ID))
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, vo)</span>
+        }
+
+        <span class="cov0" title="0">return vos, err</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package data
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/sweetrpg/api-core.go/tracing"
+        apiutil "github.com/sweetrpg/api-core.go/util"
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        "github.com/sweetrpg/common.go/logging"
+        "github.com/sweetrpg/db.go/database"
+        modelcorevo "github.com/sweetrpg/model-core.go/vo"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        oteltrace "go.opentelemetry.io/otel/trace"
+)
+
+func GetReview(c context.Context, id string) (*vo.ReviewVO, error) <span class="cov0" title="0">{
+        _, span := otel.Tracer("review").Start(c, "db-get-review", oteltrace.WithAttributes(attribute.String("id", id)))
+        objectId, err := primitive.ObjectIDFromHex(id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">model, err := database.Get[models.Review]("reviews", objectId)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Review: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">if model == nil </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("Review not found for ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov0" title="0">volumeVO, err := GetVolume(c, model.VolumeId)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("No Volume found from Review for ID %s: %s", model.VolumeId, err.Error()))
+        }</span>
+
+        <span class="cov0" title="0">return &amp;vo.ReviewVO{
+                ID:       model.ID,
+                Title:    model.Title,
+                Body:     model.Body,
+                Language: model.Language,
+                Tags:     modelcorevo.FromTagModels(model.Tags),
+                Volume:   volumeVO,
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: model.CreatedAt,
+                        CreatedBy: model.CreatedBy,
+                        UpdatedAt: model.UpdatedAt,
+                        UpdatedBy: model.UpdatedBy,
+                        DeletedAt: model.DeletedAt,
+                        DeletedBy: model.DeletedBy,
+                },
+        }, nil</span>
+}
+
+func GetReviews(c context.Context, params apiutil.QueryParams) ([]*vo.ReviewVO, error) <span class="cov0" title="0">{
+        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        models, err := database.Query[models.Review]("reviews", filter, sort, projection, params.Start, params.Limit)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Reviews: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">modelCount := len(models)
+        if modelCount == 0 </span><span class="cov0" title="0">{
+                // short-circuit if there's nothing to do
+                return make([]*vo.ReviewVO, 0), nil
+        }</span>
+
+        <span class="cov0" title="0">var vos []*vo.ReviewVO
+        for _, model := range models </span><span class="cov0" title="0">{
+                vo, err := GetReview(c, model.ID)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No Review found from item in array for ID: %s", model.ID))
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, vo)</span>
+        }
+
+        <span class="cov0" title="0">return vos, err</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package data
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/sweetrpg/api-core.go/tracing"
+        apiutil "github.com/sweetrpg/api-core.go/util"
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        "github.com/sweetrpg/common.go/logging"
+        "github.com/sweetrpg/db.go/database"
+        modelcorevo "github.com/sweetrpg/model-core.go/vo"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        oteltrace "go.opentelemetry.io/otel/trace"
+)
+
+func GetStudio(c context.Context, id string) (*vo.StudioVO, error) <span class="cov0" title="0">{
+        _, span := otel.Tracer("studio").Start(c, "db-get-studio", oteltrace.WithAttributes(attribute.String("id", id)))
+        objectId, err := primitive.ObjectIDFromHex(id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">model, err := database.Get[models.Studio]("studios", objectId)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Studio: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">if model == nil </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("Studio not found for ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov0" title="0">return &amp;vo.StudioVO{
+                ID:         model.ID,
+                Name:       model.Name,
+                Website:    model.Website,
+                Notes:      model.Notes,
+                Properties: modelcorevo.FromPropertyModels(model.Properties),
+                Tags:       modelcorevo.FromTagModels(model.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: model.CreatedAt,
+                        CreatedBy: model.CreatedBy,
+                        UpdatedAt: model.UpdatedAt,
+                        UpdatedBy: model.UpdatedBy,
+                        DeletedAt: model.DeletedAt,
+                        DeletedBy: model.DeletedBy,
+                },
+        }, nil</span>
+}
+
+func GetStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) <span class="cov0" title="0">{
+        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        models, err := database.Query[models.Studio]("studios", filter, sort, projection, params.Start, params.Limit)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Studios: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">modelCount := len(models)
+        if modelCount == 0 </span><span class="cov0" title="0">{
+                // short-circuit if there's nothing to do
+                return make([]*vo.StudioVO, 0), nil
+        }</span>
+
+        <span class="cov0" title="0">var vos []*vo.StudioVO
+        for _, model := range models </span><span class="cov0" title="0">{
+                vo, err := GetStudio(c, model.ID)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No Studio found from item in array for ID: %s", model.ID))
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, vo)</span>
+        }
+
+        <span class="cov0" title="0">return vos, err</span>
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package data
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/sweetrpg/api-core.go/tracing"
+        apiutil "github.com/sweetrpg/api-core.go/util"
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        "github.com/sweetrpg/common.go/logging"
+        "github.com/sweetrpg/db.go/database"
+        modelcorevo "github.com/sweetrpg/model-core.go/vo"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        oteltrace "go.opentelemetry.io/otel/trace"
+)
+
+func GetSystem(c context.Context, id string) (*vo.SystemVO, error) <span class="cov0" title="0">{
+        _, span := otel.Tracer("system").Start(c, "db-get-system", oteltrace.WithAttributes(attribute.String("id", id)))
+        objectId, err := primitive.ObjectIDFromHex(id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">model, err := database.Get[models.System]("systems", objectId)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for System: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">if model == nil </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("System not found for ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov0" title="0">return &amp;vo.SystemVO{
+                ID:         model.ID,
+                GameSystem: model.GameSystem,
+                Edition:    model.Edition,
+                Notes:      model.Notes,
+                Tags:       modelcorevo.FromTagModels(model.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: model.CreatedAt,
+                        CreatedBy: model.CreatedBy,
+                        UpdatedAt: model.UpdatedAt,
+                        UpdatedBy: model.UpdatedBy,
+                        DeletedAt: model.DeletedAt,
+                        DeletedBy: model.DeletedBy,
+                },
+        }, nil</span>
+}
+
+func GetSystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO, error) <span class="cov0" title="0">{
+        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        models, err := database.Query[models.System]("systems", filter, sort, projection, params.Start, params.Limit)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Systems: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">modelCount := len(models)
+        if modelCount == 0 </span><span class="cov0" title="0">{
+                // short-circuit if there's nothing to do
+                return make([]*vo.SystemVO, 0), nil
+        }</span>
+
+        <span class="cov0" title="0">var vos []*vo.SystemVO
+        for _, model := range models </span><span class="cov0" title="0">{
+                vo, err := GetSystem(c, model.ID)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No System found from item in array for ID: %s", model.ID))
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, vo)</span>
+        }
+
+        <span class="cov0" title="0">return vos, err</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package data
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/sweetrpg/api-core.go/tracing"
+        apiutil "github.com/sweetrpg/api-core.go/util"
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        "github.com/sweetrpg/common.go/logging"
+        "github.com/sweetrpg/common.go/util"
+        "github.com/sweetrpg/db.go/database"
+        modelcorevo "github.com/sweetrpg/model-core.go/vo"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        oteltrace "go.opentelemetry.io/otel/trace"
+)
+
+func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="cov0" title="0">{
+        _, span := otel.Tracer("volume").Start(c, "db-get-volume", oteltrace.WithAttributes(attribute.String("id", id)))
+        objectId, err := primitive.ObjectIDFromHex(id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">model, err := database.Get[models.Volume]("volumes", objectId)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Volume: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">if model == nil </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("Volume not found for ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov0" title="0">systemVOs := util.Map[string, vo.SystemVO](model.SystemIds, func(id string) *vo.SystemVO </span><span class="cov0" title="0">{
+                vo, err := GetSystem(c, id)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No System found from Volume for ID %s: %s", id, err.Error()))
+                }</span>
+                <span class="cov0" title="0">return vo</span>
+        })
+        <span class="cov0" title="0">publisherVOs := util.Map[string, vo.PublisherVO](model.PublisherIds, func(id string) *vo.PublisherVO </span><span class="cov0" title="0">{
+                vo, err := GetPublisher(c, id)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No Publisher found from Volume for ID %s: %s", id, err.Error()))
+                }</span>
+                <span class="cov0" title="0">return vo</span>
+        })
+        <span class="cov0" title="0">studioVOs := util.Map[string, vo.StudioVO](model.StudioIds, func(id string) *vo.StudioVO </span><span class="cov0" title="0">{
+                vo, err := GetStudio(c, id)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No Studio found from Volume for ID %s: %s", id, err.Error()))
+                }</span>
+                <span class="cov0" title="0">return vo</span>
+        })
+        <span class="cov0" title="0">licenseVOs := util.Map[string, vo.LicenseVO](model.LicenseIds, func(id string) *vo.LicenseVO </span><span class="cov0" title="0">{
+                vo, err := GetLicense(c, id)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No License found from Volume for ID %s: %s", id, err.Error()))
+                }</span>
+                <span class="cov0" title="0">return vo</span>
+        })
+
+        <span class="cov0" title="0">return &amp;vo.VolumeVO{
+                ID:          model.ID,
+                Title:       model.Title,
+                Description: model.Description,
+                Notes:       model.Notes,
+                Systems:     systemVOs,
+                Publishers:  publisherVOs,
+                Studios:     studioVOs,
+                Licenses:    licenseVOs,
+                Properties:  modelcorevo.FromPropertyModels(model.Properties),
+                Tags:        modelcorevo.FromTagModels(model.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: model.CreatedAt,
+                        CreatedBy: model.CreatedBy,
+                        UpdatedAt: model.UpdatedAt,
+                        UpdatedBy: model.UpdatedBy,
+                        DeletedAt: model.DeletedAt,
+                        DeletedBy: model.DeletedBy,
+                },
+        }, nil</span>
+}
+
+func GetVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) <span class="cov0" title="0">{
+        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        models, err := database.Query[models.Volume]("volumes", filter, sort, projection, params.Start, params.Limit)
+        span.End()
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for Volumes: %v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">modelCount := len(models)
+        if modelCount == 0 </span><span class="cov0" title="0">{
+                // short-circuit if there's nothing to do
+                return make([]*vo.VolumeVO, 0), nil
+        }</span>
+
+        <span class="cov0" title="0">var vos []*vo.VolumeVO
+        for _, model := range models </span><span class="cov0" title="0">{
+                vo, err := GetVolume(c, model.ID)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No Volume found from item in array for ID: %s", model.ID))
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, vo)</span>
+        }
+
+        <span class="cov0" title="0">return vos, err</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
