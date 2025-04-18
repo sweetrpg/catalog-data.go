@@ -1,6 +1,6 @@
 name: CI
 
-concurrency: ci-${{ github.ref }}
+concurrency: ci
 
 on:
     push:
@@ -16,20 +16,23 @@ on:
             - db-published
             - catalog-objects-published
 
+permissions:
+    contents: write
+
 jobs:
     tests:
-        name: ${{ matrix.name }}
+        name: Build/test on ${{ matrix.name }}
         runs-on: ${{ matrix.os }}
         strategy:
             fail-fast: false
             matrix:
                 include:
-                    - {
-                          name: Linux,
-                          os: ubuntu-latest,
-                      }
+                    - name: Linux
+                      os: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
+              with:
+                fetch-depth: 0
             - name: Set up Go
               uses: actions/setup-go@v5
               with:
@@ -37,7 +40,16 @@ jobs:
             - name: Build
               run: go build -v ./...
             - name: Test
-              run: go test -v ./...
+              run: |
+                    go test -v -coverprofile coverage.out ./...
+                    go tool cover -func coverage.out
+                    mkdir coverage
+                    go tool cover -html coverage.out -o coverage/coverage.html
+            - name: publish-docs
+              uses: peaceiris/actions-gh-pages@v4
+              with:
+                github_token: ${{ secrets.GITHUB_TOKEN }}
+                publish_dir: ./coverage
 
     #    docs:
     #        needs: [tests]
@@ -61,19 +73,29 @@ jobs:
     tag:
         needs: [tests]
         runs-on: ubuntu-latest
-        permissions:
-            contents: write
         concurrency: publish
         steps:
             - uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
             - name: Bump version and push tag
               uses: anothrNick/github-tag-action@v1
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   WITH_V: true
                   DEFAULT_BUMP: patch
+
+    publish:
+        needs: [tag]
+        runs-on: ubuntu-latest
+        concurrency: publish
+        steps:
+            - uses: actions/checkout@v4
+            - name: Get latest tag
+              id: get_latest_tag
+              uses: actions-ecosystem/action-get-latest-tag@v1
+            - name: Publish
+              env:
+                GOPROXY: proxy.golang.org
+              run: go list -m github.com/${{ github.repository }}@${{ steps.get_latest_tag.outputs.tag }}
 
     notify:
         needs: [tag]
@@ -82,35 +104,35 @@ jobs:
             fail-fast: false
             matrix:
                 include:
-                    - repo: api-core
+                    - repo: api-core.go
                     - repo: catalog-api
-                    - repo: catalog-data
+                    - repo: catalog-data.go
                     - repo: catalog-data-processor
-                    - repo: catalog-objects
+                    - repo: catalog-objects.go
                     - repo: catalog-web
-                    - repo: client
+                    - repo: client.go
                     - repo: data-api
-                    - repo: data-objects
-                    - repo: db
+                    - repo: data-objects.go
+                    - repo: db.go
                     - repo: initiative-api
-                    - repo: initiative-data
-                    - repo: initiative-objects
+                    - repo: initiative-data.go
+                    - repo: initiative-objects.go
                     - repo: initiative-web
                     - repo: kv-api
-                    - repo: kv-data
+                    - repo: kv-data.go
                     - repo: kv-expression-processor
                     - repo: kv-key-processor
-                    - repo: kv-objects
+                    - repo: kv-objects.go
                     - repo: kv-value-calculator
                     - repo: kv-web
                     - repo: library-api
-                    - repo: library-data
-                    - repo: library-objects
+                    - repo: library-data.go
+                    - repo: library-objects.go
                     - repo: library-web
                     - repo: main-web
-                    - repo: model-core
+                    - repo: model-core.go
                     - repo: shared-web
-                    - repo: web-core
+                    - repo: web-core.go
         steps:
             - uses: juztcode/repo-ditpatch-action@v1
               continue-on-error: true

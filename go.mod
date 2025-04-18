@@ -1,13 +1,13 @@
-module github.com/sweetrpg/catalog-data
+module github.com/sweetrpg/catalog-data.go
 
-go 1.23.2
+go 1.24.2
 
 require (
-	github.com/sweetrpg/api-core v0.0.365
-	github.com/sweetrpg/catalog-objects v0.0.185
-	github.com/sweetrpg/common v0.0.7
-	github.com/sweetrpg/db v0.0.157
-	github.com/sweetrpg/model-core v0.0.159
+	github.com/sweetrpg/api-core.go v0.0.365
+	github.com/sweetrpg/catalog-objects.go v0.0.185
+	github.com/sweetrpg/common.go v0.0.12
+	github.com/sweetrpg/db.go v0.0.157
+	github.com/sweetrpg/model-core.go v0.0.159
 	go.mongodb.org/mongo-driver v1.17.3
 	go.opentelemetry.io/otel v1.35.0
 	go.opentelemetry.io/otel/trace v1.35.0
