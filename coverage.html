@@ -801,7 +801,9 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="
 func GetVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
         filter, sort, projection := apiutil.ConvertQueryParams(params)
+        logging.Logger.Debug("get volumes", "filter", filter, "sort", sort, "projection", projection)
         models, err := database.Query[models.Volume]("volumes", filter, sort, projection, params.Start, params.Limit)
+        logging.Logger.Debug("got volumes", "models", models, "err", err)
         span.End()
         if err != nil </span><span class="cov0" title="0">{
                 logging.Logger.Error(fmt.Sprintf("Error while querying database for Volumes: %v", err))
@@ -817,6 +819,7 @@ func GetVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, 
         <span class="cov0" title="0">var vos []*vo.VolumeVO
         for _, model := range models </span><span class="cov0" title="0">{
                 vo, err := GetVolume(c, model.ID)
+                logging.Logger.Debug("got volume", "model", model, "vo", vo, "err", err)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No Volume found from item in array for ID: %s", model.ID))
                         continue</span>
@@ -824,7 +827,8 @@ func GetVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, 
                 <span class="cov0" title="0">vos = append(vos, vo)</span>
         }
 
-        <span class="cov0" title="0">return vos, err</span>
+        <span class="cov0" title="0">logging.Logger.Debug("returning volume value objects", "vos", vos, "err", err)
+        return vos, err</span>
 }
 </pre>
 		
