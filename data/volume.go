@@ -28,7 +28,7 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 	model, err := database.Get[models.Volume]("volumes", objectId)
 	span.End()
 	if err != nil {
-		logging.Logger.Error(fmt.Sprintf("Error while querying database for Volume: %v", err))
+		logging.Logger.Error(fmt.Sprintf("Error while querying database for Volume: %+v", err))
 		return nil, err
 	}
 
@@ -88,15 +88,15 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 	}, nil
 }
 
-func GetVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) {
+func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
-	logging.Logger.Debug("get volumes", "filter", filter, "sort", sort, "projection", projection)
+	logging.Logger.Debug("query volumes", "filter", filter, "sort", sort, "projection", projection)
 	models, err := database.Query[models.Volume]("volumes", filter, sort, projection, params.Start, params.Limit)
 	logging.Logger.Debug("got volumes", "models", models, "err", err)
 	span.End()
 	if err != nil {
-		logging.Logger.Error(fmt.Sprintf("Error while querying database for Volumes: %v", err))
+		logging.Logger.Error(fmt.Sprintf("Error while querying database for Volumes: %+v", err))
 		return nil, err
 	}
 
@@ -108,6 +108,7 @@ func GetVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, 
 
 	var vos []*vo.VolumeVO
 	for _, model := range models {
+		logging.Logger.Debug("processing volume model", "model", model)
 		vo, err := GetVolume(c, model.ID)
 		logging.Logger.Debug("got volume", "model", model, "vo", vo, "err", err)
 		if err != nil {
