@@ -21,7 +21,15 @@ import (
 func AddVolume(c context.Context, volume *vo.VolumeVO) (string, error) {
 	_, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
 
-	id, err := database.Insert[models.Volume](volume)
+	model := models.Volume{
+		Title:       volume.Title,
+		Description: volume.Description,
+		Notes:       volume.Notes,
+		SystemIds: util.Map[vo.SystemVO, string](volume.Systems, func(system *vo.SystemVO) string {
+			return system.ID
+		}),
+	}
+	id, err := database.Insert[models.Volume]("volumes", model)
 	if err != nil {
 		logging.Logger.Error("Error while inserting Volume object", "error", err)
 		return "", err
