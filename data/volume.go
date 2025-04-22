@@ -19,12 +19,18 @@ import (
 )
 
 func AddVolume(c context.Context, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
+	// TODO
+	return nil, nil
 }
 
 func UpdatedAtVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
+	// TODO
+	return nil, nil
 }
 
 func DeleteVolume(c context.Context, id string) error {
+	// TODO
+	return nil
 }
 
 func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
