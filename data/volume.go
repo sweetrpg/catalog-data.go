@@ -18,6 +18,15 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
+func AddVolume(c context.Context, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
+}
+
+func UpdatedAtVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
+}
+
+func DeleteVolume(c context.Context, id string) error {
+}
+
 func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 	_, span := otel.Tracer("volume").Start(c, "db-get-volume", oteltrace.WithAttributes(attribute.String("id", id)))
 	objectId, err := primitive.ObjectIDFromHex(id)
