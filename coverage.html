@@ -152,7 +152,7 @@ func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) <
 //        @Description Given a set of parameters, query the datastore for contributions that match.
 //        @Param c A Context object
 //        @Param params A QueryParams object that contains the parameters for the query
-func GetContributions(c context.Context, params apiutil.QueryParams) ([]*vo.ContributionVO, error) <span class="cov0" title="0">{
+func QueryContributions(c context.Context, params apiutil.QueryParams) ([]*vo.ContributionVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
         filter, sort, projection := apiutil.ConvertQueryParams(params)
         models, err := database.Query[models.Contribution]("contributions", filter, sort, projection, params.Start, params.Limit)
@@ -244,7 +244,7 @@ func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) <span class
         }, nil</span>
 }
 
-func GetLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) <span class="cov0" title="0">{
+func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
         filter, sort, projection := apiutil.ConvertQueryParams(params)
         models, err := database.Query[models.License]("licenses", filter, sort, projection, params.Start, params.Limit)
@@ -329,7 +329,7 @@ func GetPerson(c context.Context, id string) (*vo.PersonVO, error) <span class="
         }, nil</span>
 }
 
-func GetPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) <span class="cov0" title="0">{
+func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
         filter, sort, projection := apiutil.ConvertQueryParams(params)
         models, err := database.Query[models.Person]("persons", filter, sort, projection, params.Start, params.Limit)
@@ -416,7 +416,7 @@ func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span c
         }, nil</span>
 }
 
-func GetPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) <span class="cov0" title="0">{
+func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
         filter, sort, projection := apiutil.ConvertQueryParams(params)
         models, err := database.Query[models.Publisher]("publishers", filter, sort, projection, params.Start, params.Limit)
@@ -507,7 +507,7 @@ func GetReview(c context.Context, id string) (*vo.ReviewVO, error) <span class="
         }, nil</span>
 }
 
-func GetReviews(c context.Context, params apiutil.QueryParams) ([]*vo.ReviewVO, error) <span class="cov0" title="0">{
+func QueryReviews(c context.Context, params apiutil.QueryParams) ([]*vo.ReviewVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
         filter, sort, projection := apiutil.ConvertQueryParams(params)
         models, err := database.Query[models.Review]("reviews", filter, sort, projection, params.Start, params.Limit)
@@ -593,7 +593,7 @@ func GetStudio(c context.Context, id string) (*vo.StudioVO, error) <span class="
         }, nil</span>
 }
 
-func GetStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) <span class="cov0" title="0">{
+func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
         filter, sort, projection := apiutil.ConvertQueryParams(params)
         models, err := database.Query[models.Studio]("studios", filter, sort, projection, params.Start, params.Limit)
@@ -678,7 +678,7 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) <span class="
         }, nil</span>
 }
 
-func GetSystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO, error) <span class="cov0" title="0">{
+func QuerySystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
         filter, sort, projection := apiutil.ConvertQueryParams(params)
         models, err := database.Query[models.System]("systems", filter, sort, projection, params.Start, params.Limit)
