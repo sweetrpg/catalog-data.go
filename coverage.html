@@ -728,6 +728,21 @@ import (
         oteltrace "go.opentelemetry.io/otel/trace"
 )
 
+func AddVolume(c context.Context, volume *vo.VolumeVO) (*vo.VolumeVO, error) <span class="cov0" title="0">{
+        // TODO
+        return nil, nil
+}</span>
+
+func UpdatedAtVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) <span class="cov0" title="0">{
+        // TODO
+        return nil, nil
+}</span>
+
+func DeleteVolume(c context.Context, id string) error <span class="cov0" title="0">{
+        // TODO
+        return nil
+}</span>
+
 func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="cov0" title="0">{
         _, span := otel.Tracer("volume").Start(c, "db-get-volume", oteltrace.WithAttributes(attribute.String("id", id)))
         objectId, err := primitive.ObjectIDFromHex(id)
