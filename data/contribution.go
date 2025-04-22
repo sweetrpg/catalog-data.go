@@ -67,7 +67,7 @@ func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) {
 //	@Description Given a set of parameters, query the datastore for contributions that match.
 //	@Param c A Context object
 //	@Param params A QueryParams object that contains the parameters for the query
-func GetContributions(c context.Context, params apiutil.QueryParams) ([]*vo.ContributionVO, error) {
+func QueryContributions(c context.Context, params apiutil.QueryParams) ([]*vo.ContributionVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	models, err := database.Query[models.Contribution]("contributions", filter, sort, projection, params.Start, params.Limit)

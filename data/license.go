@@ -60,7 +60,7 @@ func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) {
 	}, nil
 }
 
-func GetLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) {
+func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	models, err := database.Query[models.License]("licenses", filter, sort, projection, params.Start, params.Limit)

@@ -55,7 +55,7 @@ func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) {
 	}, nil
 }
 
-func GetPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) {
+func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	models, err := database.Query[models.Publisher]("publishers", filter, sort, projection, params.Start, params.Limit)

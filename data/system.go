@@ -53,7 +53,7 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) {
 	}, nil
 }
 
-func GetSystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO, error) {
+func QuerySystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	models, err := database.Query[models.System]("systems", filter, sort, projection, params.Start, params.Limit)

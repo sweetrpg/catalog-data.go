@@ -59,7 +59,7 @@ func GetReview(c context.Context, id string) (*vo.ReviewVO, error) {
 	}, nil
 }
 
-func GetReviews(c context.Context, params apiutil.QueryParams) ([]*vo.ReviewVO, error) {
+func QueryReviews(c context.Context, params apiutil.QueryParams) ([]*vo.ReviewVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	models, err := database.Query[models.Review]("reviews", filter, sort, projection, params.Start, params.Limit)

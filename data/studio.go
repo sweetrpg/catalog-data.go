@@ -54,7 +54,7 @@ func GetStudio(c context.Context, id string) (*vo.StudioVO, error) {
 	}, nil
 }
 
-func GetStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) {
+func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	models, err := database.Query[models.Studio]("studios", filter, sort, projection, params.Start, params.Limit)

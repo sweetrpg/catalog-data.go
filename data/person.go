@@ -53,7 +53,7 @@ func GetPerson(c context.Context, id string) (*vo.PersonVO, error) {
 	}, nil
 }
 
-func GetPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) {
+func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) {
 	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	models, err := database.Query[models.Person]("persons", filter, sort, projection, params.Start, params.Limit)
