@@ -18,18 +18,39 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func AddVolume(c context.Context, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
+func AddVolume(c context.Context, volume *vo.VolumeVO) (string, error) {
+	_, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
+
+	id, err := database.Insert[models.Volume](volume)
+	if err != nil {
+		logging.Logger.Error("Error while inserting Volume object", "error", err)
+		return "", err
+	}
+
 	// TODO
-	return nil, nil
+
+	span.End()
+
+	return id, nil
 }
 
-func UpdatedAtVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
+func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
+	_, span := otel.Tracer("volume").Start(c, "db-update-volume", oteltrace.WithAttributes(attribute.String("id", id)))
+
 	// TODO
+
+	span.End()
+
 	return nil, nil
 }
 
 func DeleteVolume(c context.Context, id string) error {
+	_, span := otel.Tracer("volume").Start(c, "db-delete-volume", oteltrace.WithAttributes(attribute.String("id", id)))
+
 	// TODO
+
+	span.End()
+
 	return nil
 }
 
@@ -37,7 +58,7 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 	_, span := otel.Tracer("volume").Start(c, "db-get-volume", oteltrace.WithAttributes(attribute.String("id", id)))
 	objectId, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
-		logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
+		logging.Logger.Error("Error while converting object ID for Volume", "error", err)
 		return nil, err
 	}
 	model, err := database.Get[models.Volume]("volumes", objectId)
