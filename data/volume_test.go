@@ -1,12 +1,14 @@
 package data
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
+	"github.com/sweetrpg/db.go/constants"
 	"github.com/sweetrpg/db.go/database"
 )
 
@@ -15,6 +17,7 @@ type DataTestSuite struct {
 }
 
 func (suite *DataTestSuite) SetupTest() {
+	os.Setenv(constants.DB_URI, os.Getenv("TEST_DB_URI"))
 	logging.Init()
 	database.SetupDatabase()
 }
