@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sweetrpg/api-core.go/tracing"
 	apiutil "github.com/sweetrpg/api-core.go/util"
@@ -11,6 +12,8 @@ import (
 	"github.com/sweetrpg/common.go/logging"
 	"github.com/sweetrpg/common.go/util"
 	"github.com/sweetrpg/db.go/database"
+	modelcore "github.com/sweetrpg/model-core.go/models"
+	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel"
@@ -21,14 +24,39 @@ import (
 func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 	_, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
 
+	properties := modelcoreutil.ToPropertyModels(volume.Properties)
+	tags := modelcoreutil.ToTagModels(volume.Tags)
 	systemIds := util.Map[vo.SystemVO, string](volume.Systems, func(system vo.SystemVO) *string {
 		return &system.ID
 	})
+	publisherIds := util.Map[vo.PublisherVO, string](volume.Publishers, func(publisher vo.PublisherVO) *string {
+		return &publisher.ID
+	})
+	studioIds := util.Map[vo.StudioVO, string](volume.Studios, func(studio vo.StudioVO) *string {
+		return &studio.ID
+	})
+	licenseIds := util.Map[vo.LicenseVO, string](volume.Licenses, func(license vo.LicenseVO) *string {
+		return &license.ID
+	})
+	now := time.Now()
 	model := models.Volume{
-		Title:       volume.Title,
-		Description: volume.Description,
-		Notes:       volume.Notes,
-		SystemIds:   systemIds,
+		Title:        volume.Title,
+		Description:  volume.Description,
+		Notes:        volume.Notes,
+		Properties:   properties,
+		Tags:         tags,
+		SystemIds:    systemIds,
+		PublisherIds: publisherIds,
+		StudioIds:    studioIds,
+		LicenseIds:   licenseIds,
+		Auditable: modelcore.Auditable{
+			CreatedAt: now,
+			CreatedBy: volume.CreatedBy,
+			UpdatedAt: now,
+			UpdatedBy: volume.UpdatedBy,
+			DeletedAt: nil,
+			DeletedBy: nil,
+		},
 	}
 	id, err := database.Insert[models.Volume]("volumes", model)
 	if err != nil {
