@@ -18,28 +18,29 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func AddVolume(c context.Context, volume *vo.VolumeVO) (string, error) {
+func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 	_, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
 
+	systemIds := util.Map[vo.SystemVO, string](volume.Systems, func(system vo.SystemVO) *string {
+		return system.ID
+	})
 	model := models.Volume{
 		Title:       volume.Title,
 		Description: volume.Description,
 		Notes:       volume.Notes,
-		SystemIds: util.Map[vo.SystemVO, string](volume.Systems, func(system *vo.SystemVO) *string {
-			return system.ID
-		}),
+		SystemIds:   systemIds,
 	}
 	id, err := database.Insert[models.Volume]("volumes", model)
 	if err != nil {
 		logging.Logger.Error("Error while inserting Volume object", "error", err)
-		return "", err
+		return nil, err
 	}
 
 	// TODO
 
 	span.End()
 
-	return id.String(), nil
+	return id, nil
 }
 
 func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
