@@ -22,7 +22,7 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 	_, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
 
 	systemIds := util.Map[vo.SystemVO, string](volume.Systems, func(system vo.SystemVO) *string {
-		return system.ID
+		return &system.ID
 	})
 	model := models.Volume{
 		Title:       volume.Title,
@@ -40,7 +40,8 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 
 	span.End()
 
-	return id, nil
+	idStr := id.Hex()
+	return &idStr, nil
 }
 
 func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
