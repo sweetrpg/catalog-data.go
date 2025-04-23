@@ -25,7 +25,7 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (string, error) {
 		Title:       volume.Title,
 		Description: volume.Description,
 		Notes:       volume.Notes,
-		SystemIds: util.Map[vo.SystemVO, string](volume.Systems, func(system *vo.SystemVO) string {
+		SystemIds: util.Map[vo.SystemVO, string](volume.Systems, func(system *vo.SystemVO) *string {
 			return system.ID
 		}),
 	}
@@ -39,7 +39,7 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (string, error) {
 
 	span.End()
 
-	return id, nil
+	return id.String(), nil
 }
 
 func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
