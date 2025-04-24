@@ -10,6 +10,7 @@ import (
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
 	"github.com/sweetrpg/db.go/database"
+	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel"
@@ -42,8 +43,8 @@ func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) {
 		Address:    model.Address,
 		Website:    model.Website,
 		Notes:      model.Notes,
-		Properties: modelcorevo.FromPropertyModels(model.Properties),
-		Tags:       modelcorevo.FromTagModels(model.Tags),
+		Properties: modelcoreutil.FromPropertyModels(model.Properties),
+		Tags:       modelcoreutil.FromTagModels(model.Tags),
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: model.CreatedAt,
 			CreatedBy: model.CreatedBy,

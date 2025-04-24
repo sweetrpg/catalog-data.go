@@ -149,8 +149,8 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 		Publishers:  publisherVOs,
 		Studios:     studioVOs,
 		Licenses:    licenseVOs,
-		Properties:  modelcorevo.FromPropertyModels(model.Properties),
-		Tags:        modelcorevo.FromTagModels(model.Tags),
+		Properties:  modelcoreutil.FromPropertyModels(model.Properties),
+		Tags:        modelcoreutil.FromTagModels(model.Tags),
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: model.CreatedAt,
 			CreatedBy: model.CreatedBy,

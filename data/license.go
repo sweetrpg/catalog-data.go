@@ -10,6 +10,7 @@ import (
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
 	"github.com/sweetrpg/db.go/database"
+	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel"
@@ -47,8 +48,8 @@ func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) {
 		Status:       model.Status,
 		Availability: model.Availability,
 		Notes:        model.Notes,
-		Properties:   modelcorevo.FromPropertyModels(model.Properties),
-		Tags:         modelcorevo.FromTagModels(model.Tags),
+		Properties:   modelcoreutil.FromPropertyModels(model.Properties),
+		Tags:         modelcoreutil.FromTagModels(model.Tags),
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: model.CreatedAt,
 			CreatedBy: model.CreatedBy,

@@ -10,6 +10,7 @@ import (
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
 	"github.com/sweetrpg/db.go/database"
+	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel"
@@ -46,7 +47,7 @@ func GetReview(c context.Context, id string) (*vo.ReviewVO, error) {
 		Title:    model.Title,
 		Body:     model.Body,
 		Language: model.Language,
-		Tags:     modelcorevo.FromTagModels(model.Tags),
+		Tags:     modelcoreutil.FromTagModels(model.Tags),
 		Volume:   volumeVO,
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: model.CreatedAt,
