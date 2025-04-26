@@ -13,8 +13,7 @@ on:
     workflow_dispatch:
     repository_dispatch:
         types:
-            - db-published
-            - catalog-objects-published
+            - deps-updated
 
 permissions:
     contents: write
