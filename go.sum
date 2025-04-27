@@ -37,8 +37,8 @@ github.com/sweetrpg/catalog-objects.go v0.0.190 h1:nv/AUoNuU5LAoFjJaQtfoUWf68t+5
 github.com/sweetrpg/catalog-objects.go v0.0.190/go.mod h1:PwWP7lp7xaZostpRFttGmRXHm0vitT3Xnu+SAXIQ6f4=
 github.com/sweetrpg/common.go v0.0.13 h1:1j8Ct1L6GJqt0h7iiTQLFeihKy1CtuIqcYSIOZb4MBs=
 github.com/sweetrpg/common.go v0.0.13/go.mod h1:PVpjDIeB/bZYJZk5fc8whuqVJE8K5k/DsO3o+aZFEcE=
-github.com/sweetrpg/db.go v0.0.164 h1:q/ViboP74p7u/jTY3h9SFbgsAElHutFp7VStcaLypPw=
-github.com/sweetrpg/db.go v0.0.164/go.mod h1:Puk1ulObk6PlrZzrElPAnoTxs7EkeGz92wQUvEZuB/k=
+github.com/sweetrpg/db.go v0.0.165 h1:QX1uIxmzZVJy0SLagqAub+IBZcgnY1WuEbGoby9BIFo=
+github.com/sweetrpg/db.go v0.0.165/go.mod h1:RfEZLFADToVqcTOzblSKohKlCZLjKTV97wuckPLXO4k=
 github.com/sweetrpg/model-core.go v0.0.168 h1:yRWK3x0xeYhKlm0T1RQxBJEWDd/cdOhI/Q5x9+g8gi4=
 github.com/sweetrpg/model-core.go v0.0.168/go.mod h1:LhkwR8e0+6Uq2p+EPg/FYVh3O+hpID0P1r/S+3/xZFc=
 github.com/xdg-go/pbkdf2 v1.0.0 h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=
