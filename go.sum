@@ -31,10 +31,10 @@ github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
 github.com/stretchr/testify v1.10.0 h1:Xv5erBjTwe/5IxqUQTdXv5kgmIvbHo3QQyRwhJsOfJA=
 github.com/stretchr/testify v1.10.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
-github.com/sweetrpg/api-core.go v0.0.374 h1:ZPe/Bwage6U3tjcHm/0PnnpD7ZX44OnvMu8T5Z3m76o=
-github.com/sweetrpg/api-core.go v0.0.374/go.mod h1:xXlKG6LXUtWiA/k+RwJtba6wEqW3gb9DG8QreHR5H+g=
-github.com/sweetrpg/catalog-objects.go v0.0.190 h1:nv/AUoNuU5LAoFjJaQtfoUWf68t+50+BIjI84Lwh1YQ=
-github.com/sweetrpg/catalog-objects.go v0.0.190/go.mod h1:PwWP7lp7xaZostpRFttGmRXHm0vitT3Xnu+SAXIQ6f4=
+github.com/sweetrpg/api-core.go v0.0.375 h1:UrdncvFCI969qa4ZAxHOGOnxaA7tk/TBVcXJmyDV4U4=
+github.com/sweetrpg/api-core.go v0.0.375/go.mod h1:Ep76eSutbtc6YKCb0bAXBQlHiEglaVePZ3TMp+mdngo=
+github.com/sweetrpg/catalog-objects.go v0.0.191 h1:ukRn4Ui4Q+uvGddAZ3v+ToJBYQk+3LwWjhVWzpDmOqQ=
+github.com/sweetrpg/catalog-objects.go v0.0.191/go.mod h1:1n95blFHb+ejHybp0S5bxzLJKgr61yApxBipQlwoSEM=
 github.com/sweetrpg/common.go v0.0.13 h1:1j8Ct1L6GJqt0h7iiTQLFeihKy1CtuIqcYSIOZb4MBs=
 github.com/sweetrpg/common.go v0.0.13/go.mod h1:PVpjDIeB/bZYJZk5fc8whuqVJE8K5k/DsO3o+aZFEcE=
 github.com/sweetrpg/db.go v0.0.165 h1:QX1uIxmzZVJy0SLagqAub+IBZcgnY1WuEbGoby9BIFo=
