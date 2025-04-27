@@ -7,7 +7,7 @@ require (
 	github.com/sweetrpg/api-core.go v0.0.371
 	github.com/sweetrpg/catalog-objects.go v0.0.189
 	github.com/sweetrpg/common.go v0.0.12
-	github.com/sweetrpg/db.go v0.0.163
+	github.com/sweetrpg/db.go v0.0.164
 	github.com/sweetrpg/model-core.go v0.0.167
 	go.mongodb.org/mongo-driver v1.17.3
 	go.opentelemetry.io/otel v1.35.0
