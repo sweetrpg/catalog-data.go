@@ -9,8 +9,8 @@ import (
 	apiutil "github.com/sweetrpg/api-core.go/util"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
-	"github.com/sweetrpg/db.go/constants"
-	"github.com/sweetrpg/db.go/database"
+	"github.com/sweetrpg/mongodb.go/constants"
+	"github.com/sweetrpg/mongodb.go/database"
 )
 
 type DataTestSuite struct {
