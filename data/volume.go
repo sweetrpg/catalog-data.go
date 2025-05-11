@@ -22,22 +22,31 @@ import (
 )
 
 func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
+	logging.Logger.Info("AddVolume", "c", c, "volume", volume)
+
 	_, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
 
 	properties := modelcoreutil.ToPropertyModels(volume.Properties)
+	logging.Logger.Debug("ToPropertyModels", "properties", properties)
 	tags := modelcoreutil.ToTagModels(volume.Tags)
+	logging.Logger.Debug("ToTagModels", "tags", tags)
 	systemIds := util.Map[vo.SystemVO, string](volume.Systems, func(system vo.SystemVO) *string {
 		return &system.ID
 	})
+	logging.Logger.Debug("map systems", "systemIds", systemIds)
 	publisherIds := util.Map[vo.PublisherVO, string](volume.Publishers, func(publisher vo.PublisherVO) *string {
 		return &publisher.ID
 	})
+	logging.Logger.Debug("map publishers", "publisherIds", publisherIds)
 	studioIds := util.Map[vo.StudioVO, string](volume.Studios, func(studio vo.StudioVO) *string {
 		return &studio.ID
 	})
+	logging.Logger.Debug("map studios", "studioIds", studioIds)
 	licenseIds := util.Map[vo.LicenseVO, string](volume.Licenses, func(license vo.LicenseVO) *string {
 		return &license.ID
 	})
+	logging.Logger.Debug("map licenses", "licenseIds", licenseIds)
+
 	now := time.Now()
 	model := models.Volume{
 		Title:        volume.Title,
@@ -58,7 +67,10 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 			DeletedBy: nil,
 		},
 	}
+	logging.Logger.Debug("Volume model", "model", model)
+
 	id, err := database.Insert[models.Volume]("volumes", model)
+	logging.Logger.Debug("Inserted Volume", "id", id, "err", err)
 	if err != nil {
 		logging.Logger.Error("Error while inserting Volume object", "error", err)
 		return nil, err

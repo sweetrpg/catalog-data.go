@@ -28,12 +28,12 @@ func (suite *DataTestSuite) TestAddVolume() {
 		Title:       "Test Volume",
 		Description: "This is a test volume.",
 	})
-	assert.NotNil(suite.T(), err)
+	assert.Nil(suite.T(), err)
 	assert.NotEmpty(suite.T(), id)
 }
 
 func (suite *DataTestSuite) TestGetVolume() {
-	volume, err := GetVolume(suite.T().Context(), "64c7cf2fa3fc8ee7407f9b2e")
+	volume, err := GetVolume(suite.T().Context(), "000000000000000000000000")
 	assert.Nil(suite.T(), err)
 	assert.NotEmpty(suite.T(), volume)
 }
