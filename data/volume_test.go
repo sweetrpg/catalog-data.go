@@ -39,7 +39,10 @@ func (suite *DataTestSuite) TestGetVolume() {
 }
 
 func (suite *DataTestSuite) TestQueryVolumes() {
-	params := apiutil.QueryParams{}
+	params := apiutil.QueryParams{
+		Start: 0,
+		Limit: 10,
+	}
 	volumes, err := QueryVolumes(suite.T().Context(), params)
 	assert.Nil(suite.T(), err)
 	assert.NotEmpty(suite.T(), volumes)
@@ -47,7 +50,9 @@ func (suite *DataTestSuite) TestQueryVolumes() {
 
 func (suite *DataTestSuite) TestQueryVolumesSorted() {
 	params := apiutil.QueryParams{
-		Sort: make([]apiutil.Sort, 0),
+		Start: 0,
+		Limit: 10,
+		Sort:  make([]apiutil.Sort, 0),
 	}
 	volumes, err := QueryVolumes(suite.T().Context(), params)
 	assert.Nil(suite.T(), err)
@@ -56,6 +61,8 @@ func (suite *DataTestSuite) TestQueryVolumesSorted() {
 
 func (suite *DataTestSuite) TestQueryVolumesFiltered() {
 	params := apiutil.QueryParams{
+		Start:  0,
+		Limit:  10,
 		Filter: make([]apiutil.Filter, 0),
 	}
 	volumes, err := QueryVolumes(suite.T().Context(), params)
@@ -65,6 +72,8 @@ func (suite *DataTestSuite) TestQueryVolumesFiltered() {
 
 func (suite *DataTestSuite) TestQueryVolumesProjected() {
 	params := apiutil.QueryParams{
+		Start:      0,
+		Limit:      10,
 		Projection: make([]apiutil.Projection, 0),
 	}
 	volumes, err := QueryVolumes(suite.T().Context(), params)

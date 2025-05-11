@@ -163,7 +163,11 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 }
 
 func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) {
-	span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
+	logging.Logger.Info("QueryVolumes", "c", c, "params", params)
+
+	span := tracing.BuildSpanWithParams(c, "volumes", "db-get-volumes", params)
+	logging.Logger.Debug("query volumes", "span", span)
+
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	logging.Logger.Debug("query volumes", "filter", filter, "sort", sort, "projection", projection)
 	models, err := database.Query[models.Volume]("volumes", filter, sort, projection, params.Start, params.Limit)
