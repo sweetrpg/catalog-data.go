@@ -13,17 +13,17 @@ import (
 	"github.com/sweetrpg/mongodb.go/database"
 )
 
-type DataTestSuite struct {
+type VolumeDataTestSuite struct {
 	suite.Suite
 }
 
-func (suite *DataTestSuite) SetupTest() {
+func (suite *VolumeDataTestSuite) SetupTest() {
 	os.Setenv(constants.DB_URI, os.Getenv("TEST_DB_URI"))
 	logging.Init()
 	database.SetupDatabase()
 }
 
-func (suite *DataTestSuite) TestAddVolume() {
+func (suite *VolumeDataTestSuite) TestAddVolume() {
 	id, err := AddVolume(suite.T().Context(), &vo.VolumeVO{
 		Title:       "Test Volume",
 		Description: "This is a test volume.",
@@ -32,13 +32,13 @@ func (suite *DataTestSuite) TestAddVolume() {
 	assert.NotEmpty(suite.T(), id)
 }
 
-func (suite *DataTestSuite) TestGetVolume() {
+func (suite *VolumeDataTestSuite) TestGetVolume() {
 	volume, err := GetVolume(suite.T().Context(), "000000000000000000000000")
 	assert.Nil(suite.T(), err)
 	assert.NotEmpty(suite.T(), volume)
 }
 
-func (suite *DataTestSuite) TestQueryVolumes() {
+func (suite *VolumeDataTestSuite) TestQueryVolumes() {
 	params := apiutil.QueryParams{
 		Start: 0,
 		Limit: 10,
@@ -48,18 +48,20 @@ func (suite *DataTestSuite) TestQueryVolumes() {
 	assert.NotEmpty(suite.T(), volumes)
 }
 
-func (suite *DataTestSuite) TestQueryVolumesSorted() {
+func (suite *VolumeDataTestSuite) TestQueryVolumesSorted() {
 	params := apiutil.QueryParams{
 		Start: 0,
 		Limit: 10,
-		Sort:  make([]apiutil.Sort, 0),
+		Sort: []apiutil.Sort{
+			{Field: "Title", Order: 1},
+		},
 	}
 	volumes, err := QueryVolumes(suite.T().Context(), params)
 	assert.Nil(suite.T(), err)
 	assert.NotEmpty(suite.T(), volumes)
 }
 
-func (suite *DataTestSuite) TestQueryVolumesFiltered() {
+func (suite *VolumeDataTestSuite) TestQueryVolumesFiltered() {
 	params := apiutil.QueryParams{
 		Start:  0,
 		Limit:  10,
@@ -70,7 +72,7 @@ func (suite *DataTestSuite) TestQueryVolumesFiltered() {
 	assert.NotEmpty(suite.T(), volumes)
 }
 
-func (suite *DataTestSuite) TestQueryVolumesProjected() {
+func (suite *VolumeDataTestSuite) TestQueryVolumesProjected() {
 	params := apiutil.QueryParams{
 		Start:      0,
 		Limit:      10,
@@ -81,7 +83,7 @@ func (suite *DataTestSuite) TestQueryVolumesProjected() {
 	assert.NotEmpty(suite.T(), volumes)
 }
 
-func (suite *DataTestSuite) TestQueryVolumesPaged() {
+func (suite *VolumeDataTestSuite) TestQueryVolumesPaged() {
 	params := apiutil.QueryParams{
 		Limit: 10,
 		Start: 0,
@@ -92,5 +94,5 @@ func (suite *DataTestSuite) TestQueryVolumesPaged() {
 }
 
 func TestDbTestSuite(t *testing.T) {
-	suite.Run(t, new(DataTestSuite))
+	suite.Run(t, new(VolumeDataTestSuite))
 }
