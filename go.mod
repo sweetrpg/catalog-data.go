@@ -8,7 +8,7 @@ require (
 	github.com/sweetrpg/catalog-objects.go v0.0.191
 	github.com/sweetrpg/common.go v0.0.13
 	github.com/sweetrpg/model-core.go v0.0.168
-	github.com/sweetrpg/mongodb.go v0.0.170
+	github.com/sweetrpg/mongodb.go v0.0.171
 	go.mongodb.org/mongo-driver v1.17.4
 	go.opentelemetry.io/otel v1.36.0
 	go.opentelemetry.io/otel/trace v1.36.0
