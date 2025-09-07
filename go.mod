@@ -4,7 +4,7 @@ go 1.24.2
 
 require (
 	github.com/stretchr/testify v1.11.1
-	github.com/sweetrpg/api-core.go v0.0.398
+	github.com/sweetrpg/api-core.go v0.0.399
 	github.com/sweetrpg/catalog-objects.go v0.0.191
 	github.com/sweetrpg/common.go v0.0.13
 	github.com/sweetrpg/model-core.go v0.0.168
@@ -36,7 +36,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.38.0 // indirect
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.38.0 // indirect
-	go.opentelemetry.io/proto/otlp v1.7.1 // indirect
+	go.opentelemetry.io/proto/otlp v1.8.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
