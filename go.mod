@@ -4,7 +4,7 @@ go 1.24.2
 
 require (
 	github.com/stretchr/testify v1.11.1
-	github.com/sweetrpg/api-core.go v0.0.408
+	github.com/sweetrpg/api-core.go v0.0.409
 	github.com/sweetrpg/catalog-objects.go v0.0.193
 	github.com/sweetrpg/common.go v0.0.14
 	github.com/sweetrpg/model-core.go v0.0.170
