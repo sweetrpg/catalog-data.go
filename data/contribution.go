@@ -42,8 +42,18 @@ func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) {
 		return nil, nil
 	}
 
-	personVO, _ := GetPerson(c, model.PersonId)
-	volumeVO, _ := GetVolume(c, model.VolumeId)
+	return contributionModelToVO(c, model), nil
+}
+
+func contributionModelToVO(c context.Context, model *models.Contribution) *vo.ContributionVO {
+	personVO, err := GetPerson(c, model.PersonId)
+	if err != nil {
+		logging.Logger.Error(fmt.Sprintf("No Person found from Contribution for ID %s: %s", model.PersonId, err.Error()))
+	}
+	volumeVO, err := GetVolume(c, model.VolumeId)
+	if err != nil {
+		logging.Logger.Error(fmt.Sprintf("No Volume found from Contribution for ID %s: %s", model.VolumeId, err.Error()))
+	}
 
 	return &vo.ContributionVO{
 		ID:     model.ID,
@@ -58,7 +68,7 @@ func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) {
 			DeletedAt: model.DeletedAt,
 			DeletedBy: model.DeletedBy,
 		},
-	}, nil
+	}
 }
 
 // Get many contributions.
@@ -77,21 +87,10 @@ func QueryContributions(c context.Context, params apiutil.QueryParams) ([]*vo.Co
 		return nil, err
 	}
 
-	modelCount := len(models)
-	if modelCount == 0 {
-		// short-circuit if there's nothing to do
-		return make([]*vo.ContributionVO, 0), nil
-	}
-
-	var vos []*vo.ContributionVO
+	vos := make([]*vo.ContributionVO, 0, len(models))
 	for _, model := range models {
-		vo, err := GetContribution(c, model.ID)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No Contribution found from item in array for ID: %s", model.ID))
-			continue
-		}
-		vos = append(vos, vo)
+		vos = append(vos, contributionModelToVO(c, model))
 	}
 
-	return vos, err
+	return vos, nil
 }

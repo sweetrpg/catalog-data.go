@@ -37,6 +37,10 @@ func GetReview(c context.Context, id string) (*vo.ReviewVO, error) {
 		return nil, nil
 	}
 
+	return reviewModelToVO(c, model), nil
+}
+
+func reviewModelToVO(c context.Context, model *models.Review) *vo.ReviewVO {
 	volumeVO, err := GetVolume(c, model.VolumeId)
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("No Volume found from Review for ID %s: %s", model.VolumeId, err.Error()))
@@ -57,7 +61,7 @@ func GetReview(c context.Context, id string) (*vo.ReviewVO, error) {
 			DeletedAt: model.DeletedAt,
 			DeletedBy: model.DeletedBy,
 		},
-	}, nil
+	}
 }
 
 func QueryReviews(c context.Context, params apiutil.QueryParams) ([]*vo.ReviewVO, error) {
@@ -70,21 +74,10 @@ func QueryReviews(c context.Context, params apiutil.QueryParams) ([]*vo.ReviewVO
 		return nil, err
 	}
 
-	modelCount := len(models)
-	if modelCount == 0 {
-		// short-circuit if there's nothing to do
-		return make([]*vo.ReviewVO, 0), nil
-	}
-
-	var vos []*vo.ReviewVO
+	vos := make([]*vo.ReviewVO, 0, len(models))
 	for _, model := range models {
-		vo, err := GetReview(c, model.ID)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No Review found from item in array for ID: %s", model.ID))
-			continue
-		}
-		vos = append(vos, vo)
+		vos = append(vos, reviewModelToVO(c, model))
 	}
 
-	return vos, err
+	return vos, nil
 }

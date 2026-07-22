@@ -37,6 +37,10 @@ func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) {
 		return nil, nil
 	}
 
+	return publisherModelToVO(model), nil
+}
+
+func publisherModelToVO(model *models.Publisher) *vo.PublisherVO {
 	return &vo.PublisherVO{
 		ID:         model.ID,
 		Name:       model.Name,
@@ -53,7 +57,7 @@ func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) {
 			DeletedAt: model.DeletedAt,
 			DeletedBy: model.DeletedBy,
 		},
-	}, nil
+	}
 }
 
 func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) {
@@ -66,21 +70,10 @@ func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.Publi
 		return nil, err
 	}
 
-	modelCount := len(models)
-	if modelCount == 0 {
-		// short-circuit if there's nothing to do
-		return make([]*vo.PublisherVO, 0), nil
-	}
-
-	var vos []*vo.PublisherVO
+	vos := make([]*vo.PublisherVO, 0, len(models))
 	for _, model := range models {
-		vo, err := GetPublisher(c, model.ID)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No Publisher found from item in array for ID: %s", model.ID))
-			continue
-		}
-		vos = append(vos, vo)
+		vos = append(vos, publisherModelToVO(model))
 	}
 
-	return vos, err
+	return vos, nil
 }

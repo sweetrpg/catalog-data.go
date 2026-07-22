@@ -49,6 +49,7 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 
 	now := time.Now()
 	model := models.Volume{
+		ID:           primitive.NewObjectID().Hex(),
 		Title:        volume.Title,
 		Description:  volume.Description,
 		Notes:        volume.Notes,
@@ -69,19 +70,16 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 	}
 	logging.Logger.Debug("Volume model", "model", model)
 
-	id, err := database.Insert[models.Volume]("volumes", model)
-	logging.Logger.Debug("Inserted Volume", "id", id, "err", err)
+	_, err := database.Insert[models.Volume]("volumes", model)
+	logging.Logger.Debug("Inserted Volume", "id", model.ID, "err", err)
 	if err != nil {
 		logging.Logger.Error("Error while inserting Volume object", "error", err)
 		return nil, err
 	}
 
-	// TODO
-
 	span.End()
 
-	idStr := id.Hex()
-	return &idStr, nil
+	return &model.ID, nil
 }
 
 func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
@@ -123,6 +121,10 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 		return nil, nil
 	}
 
+	return volumeModelToVO(c, model), nil
+}
+
+func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO {
 	systemVOs := util.Map[string, vo.SystemVO](model.SystemIds, func(id string) *vo.SystemVO {
 		vo, err := GetSystem(c, id)
 		if err != nil {
@@ -171,7 +173,7 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 			DeletedAt: model.DeletedAt,
 			DeletedBy: model.DeletedBy,
 		},
-	}, nil
+	}
 }
 
 func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) {
@@ -190,24 +192,12 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 		return nil, err
 	}
 
-	modelCount := len(models)
-	if modelCount == 0 {
-		// short-circuit if there's nothing to do
-		return make([]*vo.VolumeVO, 0), nil
-	}
-
-	var vos []*vo.VolumeVO
+	vos := make([]*vo.VolumeVO, 0, len(models))
 	for _, model := range models {
 		logging.Logger.Debug("processing volume model", "model", model)
-		vo, err := GetVolume(c, model.ID)
-		logging.Logger.Debug("got volume", "model", model, "vo", vo, "err", err)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No Volume found from item in array for ID: %s", model.ID))
-			continue
-		}
-		vos = append(vos, vo)
+		vos = append(vos, volumeModelToVO(c, model))
 	}
 
-	logging.Logger.Debug("returning volume value objects", "vos", vos, "err", err)
-	return vos, err
+	logging.Logger.Debug("returning volume value objects", "vos", vos)
+	return vos, nil
 }

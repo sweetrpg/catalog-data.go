@@ -37,6 +37,10 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) {
 		return nil, nil
 	}
 
+	return systemModelToVO(model), nil
+}
+
+func systemModelToVO(model *models.System) *vo.SystemVO {
 	return &vo.SystemVO{
 		ID:         model.ID,
 		GameSystem: model.GameSystem,
@@ -51,7 +55,7 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) {
 			DeletedAt: model.DeletedAt,
 			DeletedBy: model.DeletedBy,
 		},
-	}, nil
+	}
 }
 
 func QuerySystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO, error) {
@@ -64,21 +68,10 @@ func QuerySystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO
 		return nil, err
 	}
 
-	modelCount := len(models)
-	if modelCount == 0 {
-		// short-circuit if there's nothing to do
-		return make([]*vo.SystemVO, 0), nil
-	}
-
-	var vos []*vo.SystemVO
+	vos := make([]*vo.SystemVO, 0, len(models))
 	for _, model := range models {
-		vo, err := GetSystem(c, model.ID)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No System found from item in array for ID: %s", model.ID))
-			continue
-		}
-		vos = append(vos, vo)
+		vos = append(vos, systemModelToVO(model))
 	}
 
-	return vos, err
+	return vos, nil
 }

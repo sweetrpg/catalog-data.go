@@ -37,6 +37,10 @@ func GetStudio(c context.Context, id string) (*vo.StudioVO, error) {
 		return nil, nil
 	}
 
+	return studioModelToVO(model), nil
+}
+
+func studioModelToVO(model *models.Studio) *vo.StudioVO {
 	return &vo.StudioVO{
 		ID:         model.ID,
 		Name:       model.Name,
@@ -52,7 +56,7 @@ func GetStudio(c context.Context, id string) (*vo.StudioVO, error) {
 			DeletedAt: model.DeletedAt,
 			DeletedBy: model.DeletedBy,
 		},
-	}, nil
+	}
 }
 
 func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) {
@@ -65,21 +69,10 @@ func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO
 		return nil, err
 	}
 
-	modelCount := len(models)
-	if modelCount == 0 {
-		// short-circuit if there's nothing to do
-		return make([]*vo.StudioVO, 0), nil
-	}
-
-	var vos []*vo.StudioVO
+	vos := make([]*vo.StudioVO, 0, len(models))
 	for _, model := range models {
-		vo, err := GetStudio(c, model.ID)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No Studio found from item in array for ID: %s", model.ID))
-			continue
-		}
-		vos = append(vos, vo)
+		vos = append(vos, studioModelToVO(model))
 	}
 
-	return vos, err
+	return vos, nil
 }

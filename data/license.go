@@ -37,6 +37,10 @@ func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) {
 		return nil, nil
 	}
 
+	return licenseModelToVO(model), nil
+}
+
+func licenseModelToVO(model *models.License) *vo.LicenseVO {
 	return &vo.LicenseVO{
 		ID:           model.ID,
 		Title:        model.Title,
@@ -58,7 +62,7 @@ func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) {
 			DeletedAt: model.DeletedAt,
 			DeletedBy: model.DeletedBy,
 		},
-	}, nil
+	}
 }
 
 func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) {
@@ -71,21 +75,10 @@ func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.License
 		return nil, err
 	}
 
-	modelCount := len(models)
-	if modelCount == 0 {
-		// short-circuit if there's nothing to do
-		return make([]*vo.LicenseVO, 0), nil
-	}
-
-	var vos []*vo.LicenseVO
+	vos := make([]*vo.LicenseVO, 0, len(models))
 	for _, model := range models {
-		vo, err := GetLicense(c, model.ID)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No License found from item in array for ID: %s", model.ID))
-			continue
-		}
-		vos = append(vos, vo)
+		vos = append(vos, licenseModelToVO(model))
 	}
 
-	return vos, err
+	return vos, nil
 }

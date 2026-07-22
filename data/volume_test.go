@@ -15,27 +15,44 @@ import (
 
 type VolumeDataTestSuite struct {
 	suite.Suite
+	seedVolumeID string
 }
 
 func (suite *VolumeDataTestSuite) SetupTest() {
 	os.Setenv(constants.DB_URI, os.Getenv("TEST_DB_URI"))
 	logging.Init()
 	database.SetupDatabase()
-}
 
-func (suite *VolumeDataTestSuite) TestAddVolume() {
 	id, err := AddVolume(suite.T().Context(), &vo.VolumeVO{
 		Title:       "Test Volume",
 		Description: "This is a test volume.",
 	})
-	assert.Nil(suite.T(), err)
+	assert.NoError(suite.T(), err)
 	assert.NotEmpty(suite.T(), id)
+	suite.seedVolumeID = *id
+}
+
+func (suite *VolumeDataTestSuite) TestAddVolume() {
+	id, err := AddVolume(suite.T().Context(), &vo.VolumeVO{
+		Title:       "Another Test Volume",
+		Description: "This is another test volume.",
+	})
+	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), id)
+	assert.NotEqual(suite.T(), suite.seedVolumeID, *id)
 }
 
 func (suite *VolumeDataTestSuite) TestGetVolume() {
-	volume, err := GetVolume(suite.T().Context(), "000000000000000000000000")
-	assert.Nil(suite.T(), err)
+	volume, err := GetVolume(suite.T().Context(), suite.seedVolumeID)
+	assert.NoError(suite.T(), err)
 	assert.NotEmpty(suite.T(), volume)
+	assert.Equal(suite.T(), "Test Volume", volume.Title)
+}
+
+func (suite *VolumeDataTestSuite) TestGetVolumeNotFound() {
+	volume, err := GetVolume(suite.T().Context(), "000000000000000000000000")
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), volume)
 }
 
 func (suite *VolumeDataTestSuite) TestQueryVolumes() {
