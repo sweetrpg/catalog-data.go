@@ -19,7 +19,7 @@ type VolumeDataTestSuite struct {
 }
 
 func (suite *VolumeDataTestSuite) SetupTest() {
-	os.Setenv(constants.DB_URI, os.Getenv("TEST_DB_URI"))
+	_ = os.Setenv(constants.DB_URI, os.Getenv("TEST_DB_URI"))
 	logging.Init()
 	database.SetupDatabase()
 
