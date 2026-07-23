@@ -1,3 +1,14 @@
+
+## 0.0.21 - 2026-07-23
+
+### Documentation
+- Update README
+
+
+### Fixed
+- Repair broken volume insert path and N+1 query bug across all entities (#3)
+
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
