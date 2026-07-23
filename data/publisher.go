@@ -12,7 +12,7 @@ import (
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -20,23 +20,22 @@ import (
 
 func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) {
 	_, span := otel.Tracer("publisher").Start(c, "db-get-publisher", oteltrace.WithAttributes(attribute.String("id", id)))
-	objectId, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
-		return nil, err
-	}
-	model, err := database.Get[models.Publisher]("publishers", objectId)
+	results, err := database.Query[models.Publisher]("publishers", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
 	span.End()
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("Error while querying database for Publisher: %v", err))
 		return nil, err
 	}
 
-	if model == nil {
+	if len(results) == 0 {
 		logging.Logger.Info(fmt.Sprintf("Publisher not found for ID: %s", id))
 		return nil, nil
 	}
 
+	return publisherModelToVO(results[0]), nil
+}
+
+func publisherModelToVO(model *models.Publisher) *vo.PublisherVO {
 	return &vo.PublisherVO{
 		ID:         model.ID,
 		Name:       model.Name,
@@ -53,7 +52,7 @@ func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) {
 			DeletedAt: model.DeletedAt,
 			DeletedBy: model.DeletedBy,
 		},
-	}, nil
+	}
 }
 
 func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) {
@@ -66,21 +65,10 @@ func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.Publi
 		return nil, err
 	}
 
-	modelCount := len(models)
-	if modelCount == 0 {
-		// short-circuit if there's nothing to do
-		return make([]*vo.PublisherVO, 0), nil
-	}
-
-	var vos []*vo.PublisherVO
+	vos := make([]*vo.PublisherVO, 0, len(models))
 	for _, model := range models {
-		vo, err := GetPublisher(c, model.ID)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No Publisher found from item in array for ID: %s", model.ID))
-			continue
-		}
-		vos = append(vos, vo)
+		vos = append(vos, publisherModelToVO(model))
 	}
 
-	return vos, err
+	return vos, nil
 }

@@ -12,7 +12,7 @@ import (
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -20,23 +20,22 @@ import (
 
 func GetStudio(c context.Context, id string) (*vo.StudioVO, error) {
 	_, span := otel.Tracer("studio").Start(c, "db-get-studio", oteltrace.WithAttributes(attribute.String("id", id)))
-	objectId, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
-		return nil, err
-	}
-	model, err := database.Get[models.Studio]("studios", objectId)
+	results, err := database.Query[models.Studio]("studios", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
 	span.End()
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("Error while querying database for Studio: %v", err))
 		return nil, err
 	}
 
-	if model == nil {
+	if len(results) == 0 {
 		logging.Logger.Info(fmt.Sprintf("Studio not found for ID: %s", id))
 		return nil, nil
 	}
 
+	return studioModelToVO(results[0]), nil
+}
+
+func studioModelToVO(model *models.Studio) *vo.StudioVO {
 	return &vo.StudioVO{
 		ID:         model.ID,
 		Name:       model.Name,
@@ -52,7 +51,7 @@ func GetStudio(c context.Context, id string) (*vo.StudioVO, error) {
 			DeletedAt: model.DeletedAt,
 			DeletedBy: model.DeletedBy,
 		},
-	}, nil
+	}
 }
 
 func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) {
@@ -65,21 +64,10 @@ func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO
 		return nil, err
 	}
 
-	modelCount := len(models)
-	if modelCount == 0 {
-		// short-circuit if there's nothing to do
-		return make([]*vo.StudioVO, 0), nil
-	}
-
-	var vos []*vo.StudioVO
+	vos := make([]*vo.StudioVO, 0, len(models))
 	for _, model := range models {
-		vo, err := GetStudio(c, model.ID)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No Studio found from item in array for ID: %s", model.ID))
-			continue
-		}
-		vos = append(vos, vo)
+		vos = append(vos, studioModelToVO(model))
 	}
 
-	return vos, err
+	return vos, nil
 }

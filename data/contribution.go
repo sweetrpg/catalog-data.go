@@ -11,7 +11,7 @@ import (
 	"github.com/sweetrpg/common.go/logging"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -25,25 +25,30 @@ import (
 //		 @Param id
 func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) {
 	_, span := otel.Tracer("contribution").Start(c, "db-get-contribution", oteltrace.WithAttributes(attribute.String("id", id)))
-	objectId, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
-		return nil, err
-	}
-	model, err := database.Get[models.Contribution]("contributions", objectId)
+	results, err := database.Query[models.Contribution]("contributions", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
 	span.End()
 	if err != nil {
 		logging.Logger.Error("Error while querying database for Contribution", "error", err)
 		return nil, err
 	}
 
-	if model == nil {
+	if len(results) == 0 {
 		logging.Logger.Info("Contribution not found for ID", "id", id)
 		return nil, nil
 	}
 
-	personVO, _ := GetPerson(c, model.PersonId)
-	volumeVO, _ := GetVolume(c, model.VolumeId)
+	return contributionModelToVO(c, results[0]), nil
+}
+
+func contributionModelToVO(c context.Context, model *models.Contribution) *vo.ContributionVO {
+	personVO, err := GetPerson(c, model.PersonId)
+	if err != nil {
+		logging.Logger.Error(fmt.Sprintf("No Person found from Contribution for ID %s: %s", model.PersonId, err.Error()))
+	}
+	volumeVO, err := GetVolume(c, model.VolumeId)
+	if err != nil {
+		logging.Logger.Error(fmt.Sprintf("No Volume found from Contribution for ID %s: %s", model.VolumeId, err.Error()))
+	}
 
 	return &vo.ContributionVO{
 		ID:     model.ID,
@@ -58,7 +63,7 @@ func GetContribution(c context.Context, id string) (*vo.ContributionVO, error) {
 			DeletedAt: model.DeletedAt,
 			DeletedBy: model.DeletedBy,
 		},
-	}, nil
+	}
 }
 
 // Get many contributions.
@@ -77,21 +82,10 @@ func QueryContributions(c context.Context, params apiutil.QueryParams) ([]*vo.Co
 		return nil, err
 	}
 
-	modelCount := len(models)
-	if modelCount == 0 {
-		// short-circuit if there's nothing to do
-		return make([]*vo.ContributionVO, 0), nil
-	}
-
-	var vos []*vo.ContributionVO
+	vos := make([]*vo.ContributionVO, 0, len(models))
 	for _, model := range models {
-		vo, err := GetContribution(c, model.ID)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No Contribution found from item in array for ID: %s", model.ID))
-			continue
-		}
-		vos = append(vos, vo)
+		vos = append(vos, contributionModelToVO(c, model))
 	}
 
-	return vos, err
+	return vos, nil
 }
