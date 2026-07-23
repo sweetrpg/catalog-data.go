@@ -4,11 +4,11 @@ go 1.25.0
 
 require (
 	github.com/stretchr/testify v1.11.1
-	github.com/sweetrpg/api-core.go v0.0.433
-	github.com/sweetrpg/catalog-objects.go v0.0.193
-	github.com/sweetrpg/common.go v0.0.14
-	github.com/sweetrpg/model-core.go v0.0.170
-	github.com/sweetrpg/mongodb.go v0.0.190
+	github.com/sweetrpg/api-core.go v0.0.436
+	github.com/sweetrpg/catalog-objects.go v0.0.196
+	github.com/sweetrpg/common.go v0.0.16
+	github.com/sweetrpg/model-core.go v0.0.173
+	github.com/sweetrpg/mongodb.go v0.0.193
 	go.mongodb.org/mongo-driver v1.17.9
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
