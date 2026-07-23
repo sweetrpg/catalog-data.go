@@ -12,7 +12,7 @@ import (
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -20,24 +20,19 @@ import (
 
 func GetPerson(c context.Context, id string) (*vo.PersonVO, error) {
 	_, span := otel.Tracer("person").Start(c, "db-get-person", oteltrace.WithAttributes(attribute.String("id", id)))
-	objectId, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		logging.Logger.Error("Error while converting object ID for Contribution", "error", err)
-		return nil, err
-	}
-	model, err := database.Get[models.Person]("persons", objectId)
+	results, err := database.Query[models.Person]("persons", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
 	span.End()
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("Error while querying database for Person: %v", err))
 		return nil, err
 	}
 
-	if model == nil {
+	if len(results) == 0 {
 		logging.Logger.Info(fmt.Sprintf("Person not found for ID: %s", id))
 		return nil, nil
 	}
 
-	return personModelToVO(model), nil
+	return personModelToVO(results[0]), nil
 }
 
 func personModelToVO(model *models.Person) *vo.PersonVO {

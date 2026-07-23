@@ -15,6 +15,7 @@ import (
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -104,24 +105,19 @@ func DeleteVolume(c context.Context, id string) error {
 
 func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 	_, span := otel.Tracer("volume").Start(c, "db-get-volume", oteltrace.WithAttributes(attribute.String("id", id)))
-	objectId, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		logging.Logger.Error("Error while converting object ID for Volume", "error", err)
-		return nil, err
-	}
-	model, err := database.Get[models.Volume]("volumes", objectId)
+	results, err := database.Query[models.Volume]("volumes", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
 	span.End()
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("Error while querying database for Volume: %+v", err))
 		return nil, err
 	}
 
-	if model == nil {
+	if len(results) == 0 {
 		logging.Logger.Info(fmt.Sprintf("Volume not found for ID: %s", id))
 		return nil, nil
 	}
 
-	return volumeModelToVO(c, model), nil
+	return volumeModelToVO(c, results[0]), nil
 }
 
 func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO {
