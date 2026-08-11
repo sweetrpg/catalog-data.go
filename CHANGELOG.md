@@ -1,5 +1,9 @@
 
-## 0.0.21 - 2026-07-23
+## 0.1.0 - 2026-08-11
+
+### Added
+- Implement UpdateVolume
+
 
 ### Documentation
 - Update README
@@ -9,9 +13,19 @@
 - Repair broken volume insert path and N+1 query bug across all entities (#3)
 
 
+## 0.0.1 - 2024-10-31
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
+
+## 0.0.21 - 2026-07-23
+
+### Documentation
+- Update README
+
+### Fixed
+- Repair broken volume insert path and N+1 query bug across all entities (#3)
 
 ## [Unreleased]
 
@@ -30,6 +44,11 @@ All notable changes to this project will be documented in this file.
   `AddVolume` now generates and assigns a proper ObjectID hex string before inserting, and
   returns that value directly instead of trusting `database.Insert`'s return (which can't
   recognize a non-`primitive.ObjectID` `_id` type).
+- **Every `GetX` function queried by a mismatched BSON type.** Each parsed the caller's ID into
+  a `primitive.ObjectID` and passed it to `database.Get[T]`, which filters on `{_id:
+  <ObjectID>}` - but every model's `_id` is stored as a plain string, so the filter never
+  matched and lookups by ID silently returned not-found. Switched every `GetX` to filter on the
+  raw string ID via `database.Query` instead.
 - **N+1 query bug across every entity's `QueryX` function** (Contribution, License, Person,
   Publisher, Review, Studio, System, Volume): each queried a page of documents, discarded them,
   then re-fetched every item individually by ID to build its VO - doubling database round
@@ -41,6 +60,8 @@ All notable changes to this project will be documented in this file.
   `google.golang.org/grpc`, resolving 18 open Dependabot alerts (10 critical, 3 high).
 - Dropped the PR workflow's `golint` step (unconditionally broken - pulls a transitive dep
   requiring Go >=1.25).
+- Bumped dependencies to real tagged releases: common.go v0.0.16, mongodb.go v0.0.193,
+  api-core.go v0.0.436, model-core.go v0.0.173, catalog-objects.go v0.0.196.
 
 ### Known gaps (not addressed in this pass)
 

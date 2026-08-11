@@ -100,6 +100,43 @@ func (suite *VolumeDataTestSuite) TestQueryVolumesProjected() {
 	assert.NotEmpty(suite.T(), volumes)
 }
 
+func (suite *VolumeDataTestSuite) TestUpdateVolume() {
+	updated, err := UpdateVolume(suite.T().Context(), suite.seedVolumeID, &vo.VolumeVO{
+		Title:       "Updated Test Volume",
+		Description: "This volume was updated.",
+	})
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), updated)
+	assert.Equal(suite.T(), "Updated Test Volume", updated.Title)
+	assert.Equal(suite.T(), "This volume was updated.", updated.Description)
+
+	fetched, err := GetVolume(suite.T().Context(), suite.seedVolumeID)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), fetched)
+	assert.Equal(suite.T(), "Updated Test Volume", fetched.Title)
+}
+
+func (suite *VolumeDataTestSuite) TestUpdateVolumePreservesCreatedAudit() {
+	before, err := GetVolume(suite.T().Context(), suite.seedVolumeID)
+	assert.NoError(suite.T(), err)
+
+	updated, err := UpdateVolume(suite.T().Context(), suite.seedVolumeID, &vo.VolumeVO{
+		Title: "Another Update",
+	})
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), updated)
+	assert.Equal(suite.T(), before.CreatedAt, updated.CreatedAt)
+	assert.True(suite.T(), updated.UpdatedAt.After(before.UpdatedAt) || updated.UpdatedAt.Equal(before.UpdatedAt))
+}
+
+func (suite *VolumeDataTestSuite) TestUpdateVolumeNotFound() {
+	updated, err := UpdateVolume(suite.T().Context(), "000000000000000000000000", &vo.VolumeVO{
+		Title: "Does Not Exist",
+	})
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), updated)
+}
+
 func (suite *VolumeDataTestSuite) TestQueryVolumesPaged() {
 	params := apiutil.QueryParams{
 		Limit: 10,
