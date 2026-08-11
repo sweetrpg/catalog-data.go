@@ -84,13 +84,85 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 }
 
 func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) {
+	logging.Logger.Info("UpdateVolume", "c", c, "id", id, "volume", volume)
+
 	_, span := otel.Tracer("volume").Start(c, "db-update-volume", oteltrace.WithAttributes(attribute.String("id", id)))
+	defer span.End()
 
-	// TODO
+	existing, err := GetVolume(c, id)
+	if err != nil {
+		logging.Logger.Error("Error while looking up existing Volume for update", "id", id, "error", err)
+		return nil, err
+	}
+	if existing == nil {
+		logging.Logger.Info(fmt.Sprintf("Volume not found for update, ID: %s", id))
+		return nil, nil
+	}
 
-	span.End()
+	properties := modelcoreutil.ToPropertyModels(volume.Properties)
+	tags := modelcoreutil.ToTagModels(volume.Tags)
+	systemIds := util.Map[vo.SystemVO, string](volume.Systems, func(system vo.SystemVO) *string {
+		return &system.ID
+	})
+	publisherIds := util.Map[vo.PublisherVO, string](volume.Publishers, func(publisher vo.PublisherVO) *string {
+		return &publisher.ID
+	})
+	studioIds := util.Map[vo.StudioVO, string](volume.Studios, func(studio vo.StudioVO) *string {
+		return &studio.ID
+	})
+	licenseIds := util.Map[vo.LicenseVO, string](volume.Licenses, func(license vo.LicenseVO) *string {
+		return &license.ID
+	})
 
-	return nil, nil
+	model := models.Volume{
+		ID:           id,
+		Title:        volume.Title,
+		Description:  volume.Description,
+		Notes:        volume.Notes,
+		Properties:   properties,
+		Tags:         tags,
+		SystemIds:    systemIds,
+		PublisherIds: publisherIds,
+		StudioIds:    studioIds,
+		LicenseIds:   licenseIds,
+		Auditable: modelcore.Auditable{
+			CreatedAt: existing.CreatedAt,
+			CreatedBy: existing.CreatedBy,
+			UpdatedAt: time.Now(),
+			UpdatedBy: volume.UpdatedBy,
+			DeletedAt: nil,
+			DeletedBy: nil,
+		},
+	}
+	logging.Logger.Debug("Volume model for update", "model", model)
+
+	data, err := bson.Marshal(model)
+	if err != nil {
+		logging.Logger.Error("Error while preparing Volume document for update", "error", err)
+		return nil, err
+	}
+	var update bson.D
+	if err := bson.Unmarshal(data, &update); err != nil {
+		logging.Logger.Error("Error while unmarshaling Volume document for update", "error", err)
+		return nil, err
+	}
+
+	result, err := database.Db.Collection("volumes").UpdateOne(
+		c,
+		bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: update}},
+	)
+	logging.Logger.Debug("update result", "result", result, "err", err)
+	if err != nil {
+		logging.Logger.Error("Error while updating Volume in database", "id", id, "error", err)
+		return nil, err
+	}
+	if result.MatchedCount == 0 {
+		logging.Logger.Info(fmt.Sprintf("Volume not found for update, ID: %s", id))
+		return nil, nil
+	}
+
+	return GetVolume(c, id)
 }
 
 func DeleteVolume(c context.Context, id string) error {
