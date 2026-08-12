@@ -3,12 +3,14 @@ package data
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sweetrpg/api-core.go/tracing"
 	apiutil "github.com/sweetrpg/api-core.go/util"
 	"github.com/sweetrpg/catalog-objects.go/models"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
+	modelcore "github.com/sweetrpg/model-core.go/models"
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
@@ -58,6 +60,73 @@ func licenseModelToVO(model *models.License) *vo.LicenseVO {
 			DeletedBy: model.DeletedBy,
 		},
 	}
+}
+
+// UpdateLicense merges the provided fields into the existing license and writes it, mirroring
+// UpdatePublisher's raw-marshal $set approach.
+func UpdateLicense(c context.Context, id string, license *vo.LicenseVO) (*vo.LicenseVO, error) {
+	_, span := otel.Tracer("license").Start(c, "db-update-license", oteltrace.WithAttributes(attribute.String("id", id)))
+	defer span.End()
+
+	existing, err := GetLicense(c, id)
+	if err != nil {
+		logging.Logger.Error("Error while looking up existing License for update", "id", id, "error", err)
+		return nil, err
+	}
+	if existing == nil {
+		logging.Logger.Info(fmt.Sprintf("License not found for update, ID: %s", id))
+		return nil, nil
+	}
+
+	model := models.License{
+		ID:           id,
+		Title:        license.Title,
+		ShortTitle:   license.ShortTitle,
+		Version:      license.Version,
+		Deed:         license.Deed,
+		LegalCode:    license.LegalCode,
+		Website:      license.Website,
+		Status:       license.Status,
+		Availability: license.Availability,
+		Notes:        license.Notes,
+		Properties:   modelcoreutil.ToPropertyModels(license.Properties),
+		Tags:         modelcoreutil.ToTagModels(license.Tags),
+		Auditable: modelcore.Auditable{
+			CreatedAt: existing.CreatedAt,
+			CreatedBy: existing.CreatedBy,
+			UpdatedAt: time.Now(),
+			UpdatedBy: license.UpdatedBy,
+			DeletedAt: nil,
+			DeletedBy: nil,
+		},
+	}
+
+	data, err := bson.Marshal(model)
+	if err != nil {
+		logging.Logger.Error("Error while preparing License document for update", "error", err)
+		return nil, err
+	}
+	var update bson.D
+	if err := bson.Unmarshal(data, &update); err != nil {
+		logging.Logger.Error("Error while unmarshaling License document for update", "error", err)
+		return nil, err
+	}
+
+	result, err := database.Db.Collection("licenses").UpdateOne(
+		c,
+		bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: update}},
+	)
+	if err != nil {
+		logging.Logger.Error("Error while updating License in database", "id", id, "error", err)
+		return nil, err
+	}
+	if result.MatchedCount == 0 {
+		logging.Logger.Info(fmt.Sprintf("License not found for update, ID: %s", id))
+		return nil, nil
+	}
+
+	return GetLicense(c, id)
 }
 
 func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) {
