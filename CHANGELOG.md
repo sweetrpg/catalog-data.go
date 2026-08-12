@@ -1,4 +1,11 @@
 
+## 0.3.0 - 2026-08-12
+
+### Added
+- Wire Format field through Add/Update/GetVolume
+
+
+
 ## 0.2.0 - 2026-08-12
 
 ### Added
