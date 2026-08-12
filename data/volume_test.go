@@ -130,6 +130,20 @@ func (suite *VolumeDataTestSuite) TestUpdateVolumePreservesCreatedAudit() {
 	assert.True(suite.T(), updated.UpdatedAt.After(before.UpdatedAt) || updated.UpdatedAt.Equal(before.UpdatedAt))
 }
 
+func (suite *VolumeDataTestSuite) TestUpdateVolumeSetsFormat() {
+	updated, err := UpdateVolume(suite.T().Context(), suite.seedVolumeID, &vo.VolumeVO{
+		Title:  "Volume With Format",
+		Format: "hardcover",
+	})
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), updated)
+	assert.Equal(suite.T(), "hardcover", updated.Format)
+
+	fetched, err := GetVolume(suite.T().Context(), suite.seedVolumeID)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "hardcover", fetched.Format)
+}
+
 func (suite *VolumeDataTestSuite) TestUpdateVolumeNotFound() {
 	updated, err := UpdateVolume(suite.T().Context(), "000000000000000000000000", &vo.VolumeVO{
 		Title: "Does Not Exist",
