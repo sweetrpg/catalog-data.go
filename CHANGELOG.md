@@ -1,4 +1,11 @@
 
+## 0.2.0 - 2026-08-12
+
+### Added
+- Add write path (Add/Delete/QueryByVolume)
+
+
+
 ## 0.1.1 - 2026-08-12
 
 ### Fixed
