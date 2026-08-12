@@ -3,15 +3,18 @@ package data
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sweetrpg/api-core.go/tracing"
 	apiutil "github.com/sweetrpg/api-core.go/util"
 	"github.com/sweetrpg/catalog-objects.go/models"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
+	modelcore "github.com/sweetrpg/model-core.go/models"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -88,4 +91,62 @@ func QueryContributions(c context.Context, params apiutil.QueryParams) ([]*vo.Co
 	}
 
 	return vos, nil
+}
+
+// QueryContributionsByVolume returns every contribution credited to volumeID.
+func QueryContributionsByVolume(c context.Context, volumeID string) ([]*vo.ContributionVO, error) {
+	_, span := otel.Tracer("contribution").Start(c, "db-query-contributions-by-volume", oteltrace.WithAttributes(attribute.String("volumeId", volumeID)))
+	results, err := database.Query[models.Contribution]("contributions", bson.D{{Key: "volume_id", Value: volumeID}}, nil, nil, 0, 0)
+	span.End()
+	if err != nil {
+		logging.Logger.Error("Error while querying database for Contributions by volume", "error", err)
+		return nil, err
+	}
+
+	vos := make([]*vo.ContributionVO, 0, len(results))
+	for _, model := range results {
+		vos = append(vos, contributionModelToVO(c, model))
+	}
+	return vos, nil
+}
+
+// AddContribution creates a new person-to-volume credit and returns its ID.
+func AddContribution(c context.Context, personID, volumeID string, roles []string, createdBy string) (*string, error) {
+	_, span := otel.Tracer("contribution").Start(c, "db-add-contribution", oteltrace.WithAttributes(
+		attribute.String("personId", personID), attribute.String("volumeId", volumeID)))
+	defer span.End()
+
+	now := time.Now()
+	model := models.Contribution{
+		ID:       primitive.NewObjectID().Hex(),
+		PersonId: personID,
+		VolumeId: volumeID,
+		Roles:    roles,
+		Auditable: modelcore.Auditable{
+			CreatedAt: now,
+			CreatedBy: createdBy,
+			UpdatedAt: now,
+			UpdatedBy: createdBy,
+		},
+	}
+
+	if _, err := database.Insert[models.Contribution]("contributions", model); err != nil {
+		logging.Logger.Error("Error while inserting Contribution", "error", err)
+		return nil, err
+	}
+	return &model.ID, nil
+}
+
+// DeleteContribution removes a person-to-volume credit by ID. Returns false if no matching
+// document existed.
+func DeleteContribution(c context.Context, id string) (bool, error) {
+	_, span := otel.Tracer("contribution").Start(c, "db-delete-contribution", oteltrace.WithAttributes(attribute.String("id", id)))
+	defer span.End()
+
+	result, err := database.Db.Collection("contributions").DeleteOne(c, bson.D{{Key: "_id", Value: id}})
+	if err != nil {
+		logging.Logger.Error("Error while deleting Contribution", "error", err)
+		return false, err
+	}
+	return result.DeletedCount > 0, nil
 }
