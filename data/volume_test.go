@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	apiutil "github.com/sweetrpg/api-core.go/util"
+	"github.com/sweetrpg/catalog-objects.go/models"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
 	"github.com/sweetrpg/mongodb.go/constants"
@@ -135,6 +136,32 @@ func (suite *VolumeDataTestSuite) TestUpdateVolumeNotFound() {
 	})
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), updated)
+}
+
+// TestUpdateVolumeWithPublisherRelationship guards against a regression: VolumeVO.Publishers
+// used to be a value slice ([]PublisherVO), which panicked when a caller further up the stack
+// (catalog-api) marshaled it via the jsonapi library - a nil-check on a non-pointer struct.
+// UpdateVolume/GetVolume don't marshal jsonapi themselves, but this confirms the pointer-slice
+// round-trips correctly at this layer, which is the part that regressed.
+func (suite *VolumeDataTestSuite) TestUpdateVolumeWithPublisherRelationship() {
+	_, err := database.Insert("publishers", models.Publisher{ID: "pub-test-1", Name: "Test Publisher"})
+	assert.NoError(suite.T(), err)
+
+	updated, err := UpdateVolume(suite.T().Context(), suite.seedVolumeID, &vo.VolumeVO{
+		Title:      "Volume With Publisher",
+		Publishers: []*vo.PublisherVO{{ID: "pub-test-1"}},
+	})
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), updated)
+	assert.Len(suite.T(), updated.Publishers, 1)
+	assert.Equal(suite.T(), "pub-test-1", updated.Publishers[0].ID)
+
+	fetched, err := GetVolume(suite.T().Context(), suite.seedVolumeID)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), fetched)
+	assert.Len(suite.T(), fetched.Publishers, 1)
+	assert.Equal(suite.T(), "pub-test-1", fetched.Publishers[0].ID)
+	assert.Equal(suite.T(), "Test Publisher", fetched.Publishers[0].Name)
 }
 
 func (suite *VolumeDataTestSuite) TestQueryVolumesPaged() {
