@@ -57,15 +57,15 @@
 				
 				<option value="file0">github.com/sweetrpg/catalog-data.go/data/contribution.go (60.4%)</option>
 				
-				<option value="file1">github.com/sweetrpg/catalog-data.go/data/license.go (0.0%)</option>
+				<option value="file1">github.com/sweetrpg/catalog-data.go/data/license.go (52.1%)</option>
 				
-				<option value="file2">github.com/sweetrpg/catalog-data.go/data/person.go (31.8%)</option>
+				<option value="file2">github.com/sweetrpg/catalog-data.go/data/person.go (52.1%)</option>
 				
-				<option value="file3">github.com/sweetrpg/catalog-data.go/data/publisher.go (31.8%)</option>
+				<option value="file3">github.com/sweetrpg/catalog-data.go/data/publisher.go (52.1%)</option>
 				
 				<option value="file4">github.com/sweetrpg/catalog-data.go/data/review.go (0.0%)</option>
 				
-				<option value="file5">github.com/sweetrpg/catalog-data.go/data/studio.go (0.0%)</option>
+				<option value="file5">github.com/sweetrpg/catalog-data.go/data/studio.go (52.1%)</option>
 				
 				<option value="file6">github.com/sweetrpg/catalog-data.go/data/system.go (0.0%)</option>
 				
@@ -251,12 +251,14 @@ func DeleteContribution(c context.Context, id string) (bool, error) <span class=
 import (
         "context"
         "fmt"
+        "time"
 
         "github.com/sweetrpg/api-core.go/tracing"
         apiutil "github.com/sweetrpg/api-core.go/util"
         "github.com/sweetrpg/catalog-objects.go/models"
         "github.com/sweetrpg/catalog-objects.go/vo"
         "github.com/sweetrpg/common.go/logging"
+        modelcore "github.com/sweetrpg/model-core.go/models"
         modelcoreutil "github.com/sweetrpg/model-core.go/util"
         modelcorevo "github.com/sweetrpg/model-core.go/vo"
         "github.com/sweetrpg/mongodb.go/database"
@@ -266,7 +268,7 @@ import (
         oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) <span class="cov0" title="0">{
+func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) <span class="cov10" title="4">{
         _, span := otel.Tracer("license").Start(c, "db-get-license", oteltrace.WithAttributes(attribute.String("id", id)))
         results, err := database.Query[models.License]("licenses", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         span.End()
@@ -275,15 +277,15 @@ func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) <span class
                 return nil, err
         }</span>
 
-        <span class="cov0" title="0">if len(results) == 0 </span><span class="cov0" title="0">{
+        <span class="cov10" title="4">if len(results) == 0 </span><span class="cov1" title="1">{
                 logging.Logger.Info(fmt.Sprintf("License not found for ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov0" title="0">return licenseModelToVO(results[0]), nil</span>
+        <span class="cov8" title="3">return licenseModelToVO(results[0]), nil</span>
 }
 
-func licenseModelToVO(model *models.License) *vo.LicenseVO <span class="cov0" title="0">{
+func licenseModelToVO(model *models.License) *vo.LicenseVO <span class="cov8" title="3">{
         return &amp;vo.LicenseVO{
                 ID:           model.ID,
                 Title:        model.Title,
@@ -307,6 +309,73 @@ func licenseModelToVO(model *models.License) *vo.LicenseVO <span class="cov0" ti
                 },
         }
 }</span>
+
+// UpdateLicense merges the provided fields into the existing license and writes it, mirroring
+// UpdatePublisher's raw-marshal $set approach.
+func UpdateLicense(c context.Context, id string, license *vo.LicenseVO) (*vo.LicenseVO, error) <span class="cov5" title="2">{
+        _, span := otel.Tracer("license").Start(c, "db-update-license", oteltrace.WithAttributes(attribute.String("id", id)))
+        defer span.End()
+
+        existing, err := GetLicense(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while looking up existing License for update", "id", id, "error", err)
+                return nil, err
+        }</span>
+        <span class="cov5" title="2">if existing == nil </span><span class="cov1" title="1">{
+                logging.Logger.Info(fmt.Sprintf("License not found for update, ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov1" title="1">model := models.License{
+                ID:           id,
+                Title:        license.Title,
+                ShortTitle:   license.ShortTitle,
+                Version:      license.Version,
+                Deed:         license.Deed,
+                LegalCode:    license.LegalCode,
+                Website:      license.Website,
+                Status:       license.Status,
+                Availability: license.Availability,
+                Notes:        license.Notes,
+                Properties:   modelcoreutil.ToPropertyModels(license.Properties),
+                Tags:         modelcoreutil.ToTagModels(license.Tags),
+                Auditable: modelcore.Auditable{
+                        CreatedAt: existing.CreatedAt,
+                        CreatedBy: existing.CreatedBy,
+                        UpdatedAt: time.Now(),
+                        UpdatedBy: license.UpdatedBy,
+                        DeletedAt: nil,
+                        DeletedBy: nil,
+                },
+        }
+
+        data, err := bson.Marshal(model)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while preparing License document for update", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">var update bson.D
+        if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while unmarshaling License document for update", "error", err)
+                return nil, err
+        }</span>
+
+        <span class="cov1" title="1">result, err := database.Db.Collection("licenses").UpdateOne(
+                c,
+                bson.D{{Key: "_id", Value: id}},
+                bson.D{{Key: "$set", Value: update}},
+        )
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while updating License in database", "id", id, "error", err)
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("License not found for update, ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov1" title="1">return GetLicense(c, id)</span>
+}
 
 func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
@@ -332,12 +401,14 @@ func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.License
 import (
         "context"
         "fmt"
+        "time"
 
         "github.com/sweetrpg/api-core.go/tracing"
         apiutil "github.com/sweetrpg/api-core.go/util"
         "github.com/sweetrpg/catalog-objects.go/models"
         "github.com/sweetrpg/catalog-objects.go/vo"
         "github.com/sweetrpg/common.go/logging"
+        modelcore "github.com/sweetrpg/model-core.go/models"
         modelcoreutil "github.com/sweetrpg/model-core.go/util"
         modelcorevo "github.com/sweetrpg/model-core.go/vo"
         "github.com/sweetrpg/mongodb.go/database"
@@ -347,7 +418,7 @@ import (
         oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func GetPerson(c context.Context, id string) (*vo.PersonVO, error) <span class="cov10" title="2">{
+func GetPerson(c context.Context, id string) (*vo.PersonVO, error) <span class="cov10" title="6">{
         _, span := otel.Tracer("person").Start(c, "db-get-person", oteltrace.WithAttributes(attribute.String("id", id)))
         results, err := database.Query[models.Person]("persons", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         span.End()
@@ -356,15 +427,15 @@ func GetPerson(c context.Context, id string) (*vo.PersonVO, error) <span class="
                 return nil, err
         }</span>
 
-        <span class="cov10" title="2">if len(results) == 0 </span><span class="cov0" title="0">{
+        <span class="cov10" title="6">if len(results) == 0 </span><span class="cov1" title="1">{
                 logging.Logger.Info(fmt.Sprintf("Person not found for ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov10" title="2">return personModelToVO(results[0]), nil</span>
+        <span class="cov9" title="5">return personModelToVO(results[0]), nil</span>
 }
 
-func personModelToVO(model *models.Person) *vo.PersonVO <span class="cov10" title="2">{
+func personModelToVO(model *models.Person) *vo.PersonVO <span class="cov9" title="5">{
         return &amp;vo.PersonVO{
                 ID:         model.ID,
                 Name:       model.Name,
@@ -381,6 +452,66 @@ func personModelToVO(model *models.Person) *vo.PersonVO <span class="cov10" titl
                 },
         }
 }</span>
+
+// UpdatePerson merges the provided fields into the existing person and writes it, mirroring
+// UpdatePublisher's raw-marshal $set approach.
+func UpdatePerson(c context.Context, id string, person *vo.PersonVO) (*vo.PersonVO, error) <span class="cov4" title="2">{
+        _, span := otel.Tracer("person").Start(c, "db-update-person", oteltrace.WithAttributes(attribute.String("id", id)))
+        defer span.End()
+
+        existing, err := GetPerson(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while looking up existing Person for update", "id", id, "error", err)
+                return nil, err
+        }</span>
+        <span class="cov4" title="2">if existing == nil </span><span class="cov1" title="1">{
+                logging.Logger.Info(fmt.Sprintf("Person not found for update, ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov1" title="1">model := models.Person{
+                ID:         id,
+                Name:       person.Name,
+                Notes:      person.Notes,
+                Properties: modelcoreutil.ToPropertyModels(person.Properties),
+                Tags:       modelcoreutil.ToTagModels(person.Tags),
+                Auditable: modelcore.Auditable{
+                        CreatedAt: existing.CreatedAt,
+                        CreatedBy: existing.CreatedBy,
+                        UpdatedAt: time.Now(),
+                        UpdatedBy: person.UpdatedBy,
+                        DeletedAt: nil,
+                        DeletedBy: nil,
+                },
+        }
+
+        data, err := bson.Marshal(model)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while preparing Person document for update", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">var update bson.D
+        if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while unmarshaling Person document for update", "error", err)
+                return nil, err
+        }</span>
+
+        <span class="cov1" title="1">result, err := database.Db.Collection("persons").UpdateOne(
+                c,
+                bson.D{{Key: "_id", Value: id}},
+                bson.D{{Key: "$set", Value: update}},
+        )
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while updating Person in database", "id", id, "error", err)
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("Person not found for update, ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov1" title="1">return GetPerson(c, id)</span>
+}
 
 func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
@@ -406,12 +537,14 @@ func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO
 import (
         "context"
         "fmt"
+        "time"
 
         "github.com/sweetrpg/api-core.go/tracing"
         apiutil "github.com/sweetrpg/api-core.go/util"
         "github.com/sweetrpg/catalog-objects.go/models"
         "github.com/sweetrpg/catalog-objects.go/vo"
         "github.com/sweetrpg/common.go/logging"
+        modelcore "github.com/sweetrpg/model-core.go/models"
         modelcoreutil "github.com/sweetrpg/model-core.go/util"
         modelcorevo "github.com/sweetrpg/model-core.go/vo"
         "github.com/sweetrpg/mongodb.go/database"
@@ -421,7 +554,7 @@ import (
         oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov10" title="2">{
+func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov10" title="6">{
         _, span := otel.Tracer("publisher").Start(c, "db-get-publisher", oteltrace.WithAttributes(attribute.String("id", id)))
         results, err := database.Query[models.Publisher]("publishers", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         span.End()
@@ -430,15 +563,15 @@ func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span c
                 return nil, err
         }</span>
 
-        <span class="cov10" title="2">if len(results) == 0 </span><span class="cov0" title="0">{
+        <span class="cov10" title="6">if len(results) == 0 </span><span class="cov1" title="1">{
                 logging.Logger.Info(fmt.Sprintf("Publisher not found for ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov10" title="2">return publisherModelToVO(results[0]), nil</span>
+        <span class="cov9" title="5">return publisherModelToVO(results[0]), nil</span>
 }
 
-func publisherModelToVO(model *models.Publisher) *vo.PublisherVO <span class="cov10" title="2">{
+func publisherModelToVO(model *models.Publisher) *vo.PublisherVO <span class="cov9" title="5">{
         return &amp;vo.PublisherVO{
                 ID:         model.ID,
                 Name:       model.Name,
@@ -457,6 +590,69 @@ func publisherModelToVO(model *models.Publisher) *vo.PublisherVO <span class="co
                 },
         }
 }</span>
+
+// UpdatePublisher merges the provided fields into the existing publisher and writes it, mirroring
+// UpdateVolume's raw-marshal $set approach (there's no generic update path since the "_id" field
+// is a plain string, not a primitive.ObjectID, so database.Update[T] doesn't apply here).
+func UpdatePublisher(c context.Context, id string, publisher *vo.PublisherVO) (*vo.PublisherVO, error) <span class="cov4" title="2">{
+        _, span := otel.Tracer("publisher").Start(c, "db-update-publisher", oteltrace.WithAttributes(attribute.String("id", id)))
+        defer span.End()
+
+        existing, err := GetPublisher(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while looking up existing Publisher for update", "id", id, "error", err)
+                return nil, err
+        }</span>
+        <span class="cov4" title="2">if existing == nil </span><span class="cov1" title="1">{
+                logging.Logger.Info(fmt.Sprintf("Publisher not found for update, ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov1" title="1">model := models.Publisher{
+                ID:         id,
+                Name:       publisher.Name,
+                Address:    publisher.Address,
+                Website:    publisher.Website,
+                Notes:      publisher.Notes,
+                Properties: modelcoreutil.ToPropertyModels(publisher.Properties),
+                Tags:       modelcoreutil.ToTagModels(publisher.Tags),
+                Auditable: modelcore.Auditable{
+                        CreatedAt: existing.CreatedAt,
+                        CreatedBy: existing.CreatedBy,
+                        UpdatedAt: time.Now(),
+                        UpdatedBy: publisher.UpdatedBy,
+                        DeletedAt: nil,
+                        DeletedBy: nil,
+                },
+        }
+
+        data, err := bson.Marshal(model)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while preparing Publisher document for update", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">var update bson.D
+        if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while unmarshaling Publisher document for update", "error", err)
+                return nil, err
+        }</span>
+
+        <span class="cov1" title="1">result, err := database.Db.Collection("publishers").UpdateOne(
+                c,
+                bson.D{{Key: "_id", Value: id}},
+                bson.D{{Key: "$set", Value: update}},
+        )
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while updating Publisher in database", "id", id, "error", err)
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("Publisher not found for update, ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov1" title="1">return GetPublisher(c, id)</span>
+}
 
 func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
@@ -562,12 +758,14 @@ func QueryReviews(c context.Context, params apiutil.QueryParams) ([]*vo.ReviewVO
 import (
         "context"
         "fmt"
+        "time"
 
         "github.com/sweetrpg/api-core.go/tracing"
         apiutil "github.com/sweetrpg/api-core.go/util"
         "github.com/sweetrpg/catalog-objects.go/models"
         "github.com/sweetrpg/catalog-objects.go/vo"
         "github.com/sweetrpg/common.go/logging"
+        modelcore "github.com/sweetrpg/model-core.go/models"
         modelcoreutil "github.com/sweetrpg/model-core.go/util"
         modelcorevo "github.com/sweetrpg/model-core.go/vo"
         "github.com/sweetrpg/mongodb.go/database"
@@ -577,7 +775,7 @@ import (
         oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func GetStudio(c context.Context, id string) (*vo.StudioVO, error) <span class="cov0" title="0">{
+func GetStudio(c context.Context, id string) (*vo.StudioVO, error) <span class="cov10" title="4">{
         _, span := otel.Tracer("studio").Start(c, "db-get-studio", oteltrace.WithAttributes(attribute.String("id", id)))
         results, err := database.Query[models.Studio]("studios", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         span.End()
@@ -586,15 +784,15 @@ func GetStudio(c context.Context, id string) (*vo.StudioVO, error) <span class="
                 return nil, err
         }</span>
 
-        <span class="cov0" title="0">if len(results) == 0 </span><span class="cov0" title="0">{
+        <span class="cov10" title="4">if len(results) == 0 </span><span class="cov1" title="1">{
                 logging.Logger.Info(fmt.Sprintf("Studio not found for ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov0" title="0">return studioModelToVO(results[0]), nil</span>
+        <span class="cov8" title="3">return studioModelToVO(results[0]), nil</span>
 }
 
-func studioModelToVO(model *models.Studio) *vo.StudioVO <span class="cov0" title="0">{
+func studioModelToVO(model *models.Studio) *vo.StudioVO <span class="cov8" title="3">{
         return &amp;vo.StudioVO{
                 ID:         model.ID,
                 Name:       model.Name,
@@ -612,6 +810,67 @@ func studioModelToVO(model *models.Studio) *vo.StudioVO <span class="cov0" title
                 },
         }
 }</span>
+
+// UpdateStudio merges the provided fields into the existing studio and writes it, mirroring
+// UpdatePublisher's raw-marshal $set approach.
+func UpdateStudio(c context.Context, id string, studio *vo.StudioVO) (*vo.StudioVO, error) <span class="cov5" title="2">{
+        _, span := otel.Tracer("studio").Start(c, "db-update-studio", oteltrace.WithAttributes(attribute.String("id", id)))
+        defer span.End()
+
+        existing, err := GetStudio(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while looking up existing Studio for update", "id", id, "error", err)
+                return nil, err
+        }</span>
+        <span class="cov5" title="2">if existing == nil </span><span class="cov1" title="1">{
+                logging.Logger.Info(fmt.Sprintf("Studio not found for update, ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov1" title="1">model := models.Studio{
+                ID:         id,
+                Name:       studio.Name,
+                Website:    studio.Website,
+                Notes:      studio.Notes,
+                Properties: modelcoreutil.ToPropertyModels(studio.Properties),
+                Tags:       modelcoreutil.ToTagModels(studio.Tags),
+                Auditable: modelcore.Auditable{
+                        CreatedAt: existing.CreatedAt,
+                        CreatedBy: existing.CreatedBy,
+                        UpdatedAt: time.Now(),
+                        UpdatedBy: studio.UpdatedBy,
+                        DeletedAt: nil,
+                        DeletedBy: nil,
+                },
+        }
+
+        data, err := bson.Marshal(model)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while preparing Studio document for update", "error", err)
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">var update bson.D
+        if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while unmarshaling Studio document for update", "error", err)
+                return nil, err
+        }</span>
+
+        <span class="cov1" title="1">result, err := database.Db.Collection("studios").UpdateOne(
+                c,
+                bson.D{{Key: "_id", Value: id}},
+                bson.D{{Key: "$set", Value: update}},
+        )
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while updating Studio in database", "id", id, "error", err)
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
+                logging.Logger.Info(fmt.Sprintf("Studio not found for update, ID: %s", id))
+                return nil, nil
+        }</span>
+
+        <span class="cov1" title="1">return GetStudio(c, id)</span>
+}
 
 func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) <span class="cov0" title="0">{
         span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
