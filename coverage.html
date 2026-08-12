@@ -729,7 +729,7 @@ import (
         oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov6" title="15">{
+func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov6" title="16">{
         logging.Logger.Info("AddVolume", "c", c, "volume", volume)
 
         _, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
@@ -739,13 +739,13 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
         tags := modelcoreutil.ToTagModels(volume.Tags)
         logging.Logger.Debug("ToTagModels", "tags", tags)
         systemIds := relationIDs(volume.Systems, func(s *vo.SystemVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
-        <span class="cov6" title="15">logging.Logger.Debug("map systems", "systemIds", systemIds)
+        <span class="cov6" title="16">logging.Logger.Debug("map systems", "systemIds", systemIds)
         publisherIds := relationIDs(volume.Publishers, func(p *vo.PublisherVO) string </span><span class="cov0" title="0">{ return p.ID }</span>)
-        <span class="cov6" title="15">logging.Logger.Debug("map publishers", "publisherIds", publisherIds)
+        <span class="cov6" title="16">logging.Logger.Debug("map publishers", "publisherIds", publisherIds)
         studioIds := relationIDs(volume.Studios, func(s *vo.StudioVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
-        <span class="cov6" title="15">logging.Logger.Debug("map studios", "studioIds", studioIds)
+        <span class="cov6" title="16">logging.Logger.Debug("map studios", "studioIds", studioIds)
         licenseIds := relationIDs(volume.Licenses, func(l *vo.LicenseVO) string </span><span class="cov0" title="0">{ return l.ID }</span>)
-        <span class="cov6" title="15">logging.Logger.Debug("map licenses", "licenseIds", licenseIds)
+        <span class="cov6" title="16">logging.Logger.Debug("map licenses", "licenseIds", licenseIds)
 
         now := time.Now()
         model := models.Volume{
@@ -753,6 +753,7 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
                 Title:        volume.Title,
                 Description:  volume.Description,
                 Notes:        volume.Notes,
+                Format:       volume.Format,
                 Properties:   properties,
                 Tags:         tags,
                 SystemIds:    systemIds,
@@ -777,12 +778,12 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
                 return nil, err
         }</span>
 
-        <span class="cov6" title="15">span.End()
+        <span class="cov6" title="16">span.End()
 
         return &amp;model.ID, nil</span>
 }
 
-func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) <span class="cov3" title="4">{
+func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) <span class="cov4" title="5">{
         logging.Logger.Info("UpdateVolume", "c", c, "id", id, "volume", volume)
 
         _, span := otel.Tracer("volume").Start(c, "db-update-volume", oteltrace.WithAttributes(attribute.String("id", id)))
@@ -793,23 +794,24 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.Volume
                 logging.Logger.Error("Error while looking up existing Volume for update", "id", id, "error", err)
                 return nil, err
         }</span>
-        <span class="cov3" title="4">if existing == nil </span><span class="cov1" title="1">{
+        <span class="cov4" title="5">if existing == nil </span><span class="cov1" title="1">{
                 logging.Logger.Info(fmt.Sprintf("Volume not found for update, ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov3" title="3">properties := modelcoreutil.ToPropertyModels(volume.Properties)
+        <span class="cov3" title="4">properties := modelcoreutil.ToPropertyModels(volume.Properties)
         tags := modelcoreutil.ToTagModels(volume.Tags)
         systemIds := relationIDs(volume.Systems, func(s *vo.SystemVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
-        <span class="cov3" title="3">publisherIds := relationIDs(volume.Publishers, func(p *vo.PublisherVO) string </span><span class="cov1" title="1">{ return p.ID }</span>)
-        <span class="cov3" title="3">studioIds := relationIDs(volume.Studios, func(s *vo.StudioVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
-        <span class="cov3" title="3">licenseIds := relationIDs(volume.Licenses, func(l *vo.LicenseVO) string </span><span class="cov0" title="0">{ return l.ID }</span>)
+        <span class="cov3" title="4">publisherIds := relationIDs(volume.Publishers, func(p *vo.PublisherVO) string </span><span class="cov1" title="1">{ return p.ID }</span>)
+        <span class="cov3" title="4">studioIds := relationIDs(volume.Studios, func(s *vo.StudioVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
+        <span class="cov3" title="4">licenseIds := relationIDs(volume.Licenses, func(l *vo.LicenseVO) string </span><span class="cov0" title="0">{ return l.ID }</span>)
 
-        <span class="cov3" title="3">model := models.Volume{
+        <span class="cov3" title="4">model := models.Volume{
                 ID:           id,
                 Title:        volume.Title,
                 Description:  volume.Description,
                 Notes:        volume.Notes,
+                Format:       volume.Format,
                 Properties:   properties,
                 Tags:         tags,
                 SystemIds:    systemIds,
@@ -832,13 +834,13 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.Volume
                 logging.Logger.Error("Error while preparing Volume document for update", "error", err)
                 return nil, err
         }</span>
-        <span class="cov3" title="3">var update bson.D
+        <span class="cov3" title="4">var update bson.D
         if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
                 logging.Logger.Error("Error while unmarshaling Volume document for update", "error", err)
                 return nil, err
         }</span>
 
-        <span class="cov3" title="3">result, err := database.Db.Collection("volumes").UpdateOne(
+        <span class="cov3" title="4">result, err := database.Db.Collection("volumes").UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: id}},
                 bson.D{{Key: "$set", Value: update}},
@@ -848,12 +850,12 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.Volume
                 logging.Logger.Error("Error while updating Volume in database", "id", id, "error", err)
                 return nil, err
         }</span>
-        <span class="cov3" title="3">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
+        <span class="cov3" title="4">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
                 logging.Logger.Info(fmt.Sprintf("Volume not found for update, ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov3" title="3">return GetVolume(c, id)</span>
+        <span class="cov3" title="4">return GetVolume(c, id)</span>
 }
 
 func DeleteVolume(c context.Context, id string) error <span class="cov0" title="0">{
@@ -866,7 +868,7 @@ func DeleteVolume(c context.Context, id string) error <span class="cov0" title="
         return nil
 }</span>
 
-func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="cov6" title="14">{
+func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="cov6" title="17">{
         _, span := otel.Tracer("volume").Start(c, "db-get-volume", oteltrace.WithAttributes(attribute.String("id", id)))
         results, err := database.Query[models.Volume]("volumes", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         span.End()
@@ -875,29 +877,29 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="
                 return nil, err
         }</span>
 
-        <span class="cov6" title="14">if len(results) == 0 </span><span class="cov2" title="2">{
+        <span class="cov6" title="17">if len(results) == 0 </span><span class="cov2" title="2">{
                 logging.Logger.Info(fmt.Sprintf("Volume not found for ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov6" title="12">return volumeModelToVO(c, results[0]), nil</span>
+        <span class="cov6" title="15">return volumeModelToVO(c, results[0]), nil</span>
 }
 
 // relationIDs extracts each element's ID from a pointer-slice relationship field - the
 // counterpart to the *ByIDs functions below, which resolve IDs back into VOs. Both directions
 // live here rather than using util.Map (which always dereferences into a value slice) since
 // VolumeVO's relationship fields are pointer slices - see that struct's own doc comment for why.
-func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="72">{
+func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="80">{
         ids := make([]string, 0, len(relations))
         for _, r := range relations </span><span class="cov1" title="1">{
                 if r != nil </span><span class="cov1" title="1">{
                         ids = append(ids, id(r))
                 }</span>
         }
-        <span class="cov10" title="72">return ids</span>
+        <span class="cov10" title="80">return ids</span>
 }
 
-func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO <span class="cov9" title="56">{
+func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO <span class="cov9" title="59">{
         systemVOs := make([]*vo.SystemVO, 0, len(model.SystemIds))
         for _, id := range model.SystemIds </span><span class="cov0" title="0">{
                 system, err := GetSystem(c, id)
@@ -909,7 +911,7 @@ func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO <span
                         systemVOs = append(systemVOs, system)
                 }</span>
         }
-        <span class="cov9" title="56">publisherVOs := make([]*vo.PublisherVO, 0, len(model.PublisherIds))
+        <span class="cov9" title="59">publisherVOs := make([]*vo.PublisherVO, 0, len(model.PublisherIds))
         for _, id := range model.PublisherIds </span><span class="cov2" title="2">{
                 publisher, err := GetPublisher(c, id)
                 if err != nil </span><span class="cov0" title="0">{
@@ -920,7 +922,7 @@ func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO <span
                         publisherVOs = append(publisherVOs, publisher)
                 }</span>
         }
-        <span class="cov9" title="56">studioVOs := make([]*vo.StudioVO, 0, len(model.StudioIds))
+        <span class="cov9" title="59">studioVOs := make([]*vo.StudioVO, 0, len(model.StudioIds))
         for _, id := range model.StudioIds </span><span class="cov0" title="0">{
                 studio, err := GetStudio(c, id)
                 if err != nil </span><span class="cov0" title="0">{
@@ -931,7 +933,7 @@ func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO <span
                         studioVOs = append(studioVOs, studio)
                 }</span>
         }
-        <span class="cov9" title="56">licenseVOs := make([]*vo.LicenseVO, 0, len(model.LicenseIds))
+        <span class="cov9" title="59">licenseVOs := make([]*vo.LicenseVO, 0, len(model.LicenseIds))
         for _, id := range model.LicenseIds </span><span class="cov0" title="0">{
                 license, err := GetLicense(c, id)
                 if err != nil </span><span class="cov0" title="0">{
@@ -943,11 +945,12 @@ func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO <span
                 }</span>
         }
 
-        <span class="cov9" title="56">return &amp;vo.VolumeVO{
+        <span class="cov9" title="59">return &amp;vo.VolumeVO{
                 ID:          model.ID,
                 Title:       model.Title,
                 Description: model.Description,
                 Notes:       model.Notes,
+                Format:      model.Format,
                 Systems:     systemVOs,
                 Publishers:  publisherVOs,
                 Studios:     studioVOs,
