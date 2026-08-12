@@ -10,7 +10,6 @@ import (
 	"github.com/sweetrpg/catalog-objects.go/models"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
-	"github.com/sweetrpg/common.go/util"
 	modelcore "github.com/sweetrpg/model-core.go/models"
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
@@ -31,21 +30,13 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 	logging.Logger.Debug("ToPropertyModels", "properties", properties)
 	tags := modelcoreutil.ToTagModels(volume.Tags)
 	logging.Logger.Debug("ToTagModels", "tags", tags)
-	systemIds := util.Map[vo.SystemVO, string](volume.Systems, func(system vo.SystemVO) *string {
-		return &system.ID
-	})
+	systemIds := relationIDs(volume.Systems, func(s *vo.SystemVO) string { return s.ID })
 	logging.Logger.Debug("map systems", "systemIds", systemIds)
-	publisherIds := util.Map[vo.PublisherVO, string](volume.Publishers, func(publisher vo.PublisherVO) *string {
-		return &publisher.ID
-	})
+	publisherIds := relationIDs(volume.Publishers, func(p *vo.PublisherVO) string { return p.ID })
 	logging.Logger.Debug("map publishers", "publisherIds", publisherIds)
-	studioIds := util.Map[vo.StudioVO, string](volume.Studios, func(studio vo.StudioVO) *string {
-		return &studio.ID
-	})
+	studioIds := relationIDs(volume.Studios, func(s *vo.StudioVO) string { return s.ID })
 	logging.Logger.Debug("map studios", "studioIds", studioIds)
-	licenseIds := util.Map[vo.LicenseVO, string](volume.Licenses, func(license vo.LicenseVO) *string {
-		return &license.ID
-	})
+	licenseIds := relationIDs(volume.Licenses, func(l *vo.LicenseVO) string { return l.ID })
 	logging.Logger.Debug("map licenses", "licenseIds", licenseIds)
 
 	now := time.Now()
@@ -101,18 +92,10 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.Volume
 
 	properties := modelcoreutil.ToPropertyModels(volume.Properties)
 	tags := modelcoreutil.ToTagModels(volume.Tags)
-	systemIds := util.Map[vo.SystemVO, string](volume.Systems, func(system vo.SystemVO) *string {
-		return &system.ID
-	})
-	publisherIds := util.Map[vo.PublisherVO, string](volume.Publishers, func(publisher vo.PublisherVO) *string {
-		return &publisher.ID
-	})
-	studioIds := util.Map[vo.StudioVO, string](volume.Studios, func(studio vo.StudioVO) *string {
-		return &studio.ID
-	})
-	licenseIds := util.Map[vo.LicenseVO, string](volume.Licenses, func(license vo.LicenseVO) *string {
-		return &license.ID
-	})
+	systemIds := relationIDs(volume.Systems, func(s *vo.SystemVO) string { return s.ID })
+	publisherIds := relationIDs(volume.Publishers, func(p *vo.PublisherVO) string { return p.ID })
+	studioIds := relationIDs(volume.Studios, func(s *vo.StudioVO) string { return s.ID })
+	licenseIds := relationIDs(volume.Licenses, func(l *vo.LicenseVO) string { return l.ID })
 
 	model := models.Volume{
 		ID:           id,
@@ -192,35 +175,65 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 	return volumeModelToVO(c, results[0]), nil
 }
 
+// relationIDs extracts each element's ID from a pointer-slice relationship field - the
+// counterpart to the *ByIDs functions below, which resolve IDs back into VOs. Both directions
+// live here rather than using util.Map (which always dereferences into a value slice) since
+// VolumeVO's relationship fields are pointer slices - see that struct's own doc comment for why.
+func relationIDs[T any](relations []*T, id func(*T) string) []string {
+	ids := make([]string, 0, len(relations))
+	for _, r := range relations {
+		if r != nil {
+			ids = append(ids, id(r))
+		}
+	}
+	return ids
+}
+
 func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO {
-	systemVOs := util.Map[string, vo.SystemVO](model.SystemIds, func(id string) *vo.SystemVO {
-		vo, err := GetSystem(c, id)
+	systemVOs := make([]*vo.SystemVO, 0, len(model.SystemIds))
+	for _, id := range model.SystemIds {
+		system, err := GetSystem(c, id)
 		if err != nil {
 			logging.Logger.Error(fmt.Sprintf("No System found from Volume for ID %s: %s", id, err.Error()))
+			continue
 		}
-		return vo
-	})
-	publisherVOs := util.Map[string, vo.PublisherVO](model.PublisherIds, func(id string) *vo.PublisherVO {
-		vo, err := GetPublisher(c, id)
+		if system != nil {
+			systemVOs = append(systemVOs, system)
+		}
+	}
+	publisherVOs := make([]*vo.PublisherVO, 0, len(model.PublisherIds))
+	for _, id := range model.PublisherIds {
+		publisher, err := GetPublisher(c, id)
 		if err != nil {
 			logging.Logger.Error(fmt.Sprintf("No Publisher found from Volume for ID %s: %s", id, err.Error()))
+			continue
 		}
-		return vo
-	})
-	studioVOs := util.Map[string, vo.StudioVO](model.StudioIds, func(id string) *vo.StudioVO {
-		vo, err := GetStudio(c, id)
+		if publisher != nil {
+			publisherVOs = append(publisherVOs, publisher)
+		}
+	}
+	studioVOs := make([]*vo.StudioVO, 0, len(model.StudioIds))
+	for _, id := range model.StudioIds {
+		studio, err := GetStudio(c, id)
 		if err != nil {
 			logging.Logger.Error(fmt.Sprintf("No Studio found from Volume for ID %s: %s", id, err.Error()))
+			continue
 		}
-		return vo
-	})
-	licenseVOs := util.Map[string, vo.LicenseVO](model.LicenseIds, func(id string) *vo.LicenseVO {
-		vo, err := GetLicense(c, id)
+		if studio != nil {
+			studioVOs = append(studioVOs, studio)
+		}
+	}
+	licenseVOs := make([]*vo.LicenseVO, 0, len(model.LicenseIds))
+	for _, id := range model.LicenseIds {
+		license, err := GetLicense(c, id)
 		if err != nil {
 			logging.Logger.Error(fmt.Sprintf("No License found from Volume for ID %s: %s", id, err.Error()))
+			continue
 		}
-		return vo
-	})
+		if license != nil {
+			licenseVOs = append(licenseVOs, license)
+		}
+	}
 
 	return &vo.VolumeVO{
 		ID:          model.ID,
