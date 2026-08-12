@@ -3,12 +3,14 @@ package data
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sweetrpg/api-core.go/tracing"
 	apiutil "github.com/sweetrpg/api-core.go/util"
 	"github.com/sweetrpg/catalog-objects.go/models"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
+	modelcore "github.com/sweetrpg/model-core.go/models"
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
@@ -51,6 +53,66 @@ func personModelToVO(model *models.Person) *vo.PersonVO {
 			DeletedBy: model.DeletedBy,
 		},
 	}
+}
+
+// UpdatePerson merges the provided fields into the existing person and writes it, mirroring
+// UpdatePublisher's raw-marshal $set approach.
+func UpdatePerson(c context.Context, id string, person *vo.PersonVO) (*vo.PersonVO, error) {
+	_, span := otel.Tracer("person").Start(c, "db-update-person", oteltrace.WithAttributes(attribute.String("id", id)))
+	defer span.End()
+
+	existing, err := GetPerson(c, id)
+	if err != nil {
+		logging.Logger.Error("Error while looking up existing Person for update", "id", id, "error", err)
+		return nil, err
+	}
+	if existing == nil {
+		logging.Logger.Info(fmt.Sprintf("Person not found for update, ID: %s", id))
+		return nil, nil
+	}
+
+	model := models.Person{
+		ID:         id,
+		Name:       person.Name,
+		Notes:      person.Notes,
+		Properties: modelcoreutil.ToPropertyModels(person.Properties),
+		Tags:       modelcoreutil.ToTagModels(person.Tags),
+		Auditable: modelcore.Auditable{
+			CreatedAt: existing.CreatedAt,
+			CreatedBy: existing.CreatedBy,
+			UpdatedAt: time.Now(),
+			UpdatedBy: person.UpdatedBy,
+			DeletedAt: nil,
+			DeletedBy: nil,
+		},
+	}
+
+	data, err := bson.Marshal(model)
+	if err != nil {
+		logging.Logger.Error("Error while preparing Person document for update", "error", err)
+		return nil, err
+	}
+	var update bson.D
+	if err := bson.Unmarshal(data, &update); err != nil {
+		logging.Logger.Error("Error while unmarshaling Person document for update", "error", err)
+		return nil, err
+	}
+
+	result, err := database.Db.Collection("persons").UpdateOne(
+		c,
+		bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: update}},
+	)
+	if err != nil {
+		logging.Logger.Error("Error while updating Person in database", "id", id, "error", err)
+		return nil, err
+	}
+	if result.MatchedCount == 0 {
+		logging.Logger.Info(fmt.Sprintf("Person not found for update, ID: %s", id))
+		return nil, nil
+	}
+
+	return GetPerson(c, id)
 }
 
 func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) {
