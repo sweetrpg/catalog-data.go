@@ -61,7 +61,7 @@
 				
 				<option value="file2">github.com/sweetrpg/catalog-data.go/data/person.go (0.0%)</option>
 				
-				<option value="file3">github.com/sweetrpg/catalog-data.go/data/publisher.go (0.0%)</option>
+				<option value="file3">github.com/sweetrpg/catalog-data.go/data/publisher.go (31.8%)</option>
 				
 				<option value="file4">github.com/sweetrpg/catalog-data.go/data/review.go (0.0%)</option>
 				
@@ -69,7 +69,7 @@
 				
 				<option value="file6">github.com/sweetrpg/catalog-data.go/data/system.go (0.0%)</option>
 				
-				<option value="file7">github.com/sweetrpg/catalog-data.go/data/volume.go (63.6%)</option>
+				<option value="file7">github.com/sweetrpg/catalog-data.go/data/volume.go (65.9%)</option>
 				
 				</select>
 			</div>
@@ -360,7 +360,7 @@ import (
         oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov0" title="0">{
+func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov10" title="2">{
         _, span := otel.Tracer("publisher").Start(c, "db-get-publisher", oteltrace.WithAttributes(attribute.String("id", id)))
         results, err := database.Query[models.Publisher]("publishers", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         span.End()
@@ -369,15 +369,15 @@ func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span c
                 return nil, err
         }</span>
 
-        <span class="cov0" title="0">if len(results) == 0 </span><span class="cov0" title="0">{
+        <span class="cov10" title="2">if len(results) == 0 </span><span class="cov0" title="0">{
                 logging.Logger.Info(fmt.Sprintf("Publisher not found for ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov0" title="0">return publisherModelToVO(results[0]), nil</span>
+        <span class="cov10" title="2">return publisherModelToVO(results[0]), nil</span>
 }
 
-func publisherModelToVO(model *models.Publisher) *vo.PublisherVO <span class="cov0" title="0">{
+func publisherModelToVO(model *models.Publisher) *vo.PublisherVO <span class="cov10" title="2">{
         return &amp;vo.PublisherVO{
                 ID:         model.ID,
                 Name:       model.Name,
@@ -657,7 +657,6 @@ import (
         "github.com/sweetrpg/catalog-objects.go/models"
         "github.com/sweetrpg/catalog-objects.go/vo"
         "github.com/sweetrpg/common.go/logging"
-        "github.com/sweetrpg/common.go/util"
         modelcore "github.com/sweetrpg/model-core.go/models"
         modelcoreutil "github.com/sweetrpg/model-core.go/util"
         modelcorevo "github.com/sweetrpg/model-core.go/vo"
@@ -669,7 +668,7 @@ import (
         oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov6" title="12">{
+func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov6" title="13">{
         logging.Logger.Info("AddVolume", "c", c, "volume", volume)
 
         _, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
@@ -678,22 +677,14 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
         logging.Logger.Debug("ToPropertyModels", "properties", properties)
         tags := modelcoreutil.ToTagModels(volume.Tags)
         logging.Logger.Debug("ToTagModels", "tags", tags)
-        systemIds := util.Map[vo.SystemVO, string](volume.Systems, func(system vo.SystemVO) *string </span><span class="cov0" title="0">{
-                return &amp;system.ID
-        }</span>)
-        <span class="cov6" title="12">logging.Logger.Debug("map systems", "systemIds", systemIds)
-        publisherIds := util.Map[vo.PublisherVO, string](volume.Publishers, func(publisher vo.PublisherVO) *string </span><span class="cov0" title="0">{
-                return &amp;publisher.ID
-        }</span>)
-        <span class="cov6" title="12">logging.Logger.Debug("map publishers", "publisherIds", publisherIds)
-        studioIds := util.Map[vo.StudioVO, string](volume.Studios, func(studio vo.StudioVO) *string </span><span class="cov0" title="0">{
-                return &amp;studio.ID
-        }</span>)
-        <span class="cov6" title="12">logging.Logger.Debug("map studios", "studioIds", studioIds)
-        licenseIds := util.Map[vo.LicenseVO, string](volume.Licenses, func(license vo.LicenseVO) *string </span><span class="cov0" title="0">{
-                return &amp;license.ID
-        }</span>)
-        <span class="cov6" title="12">logging.Logger.Debug("map licenses", "licenseIds", licenseIds)
+        systemIds := relationIDs(volume.Systems, func(s *vo.SystemVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
+        <span class="cov6" title="13">logging.Logger.Debug("map systems", "systemIds", systemIds)
+        publisherIds := relationIDs(volume.Publishers, func(p *vo.PublisherVO) string </span><span class="cov0" title="0">{ return p.ID }</span>)
+        <span class="cov6" title="13">logging.Logger.Debug("map publishers", "publisherIds", publisherIds)
+        studioIds := relationIDs(volume.Studios, func(s *vo.StudioVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
+        <span class="cov6" title="13">logging.Logger.Debug("map studios", "studioIds", studioIds)
+        licenseIds := relationIDs(volume.Licenses, func(l *vo.LicenseVO) string </span><span class="cov0" title="0">{ return l.ID }</span>)
+        <span class="cov6" title="13">logging.Logger.Debug("map licenses", "licenseIds", licenseIds)
 
         now := time.Now()
         model := models.Volume{
@@ -725,12 +716,12 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
                 return nil, err
         }</span>
 
-        <span class="cov6" title="12">span.End()
+        <span class="cov6" title="13">span.End()
 
         return &amp;model.ID, nil</span>
 }
 
-func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) <span class="cov3" title="3">{
+func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) <span class="cov4" title="4">{
         logging.Logger.Info("UpdateVolume", "c", c, "id", id, "volume", volume)
 
         _, span := otel.Tracer("volume").Start(c, "db-update-volume", oteltrace.WithAttributes(attribute.String("id", id)))
@@ -741,27 +732,19 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.Volume
                 logging.Logger.Error("Error while looking up existing Volume for update", "id", id, "error", err)
                 return nil, err
         }</span>
-        <span class="cov3" title="3">if existing == nil </span><span class="cov1" title="1">{
+        <span class="cov4" title="4">if existing == nil </span><span class="cov1" title="1">{
                 logging.Logger.Info(fmt.Sprintf("Volume not found for update, ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov2" title="2">properties := modelcoreutil.ToPropertyModels(volume.Properties)
+        <span class="cov3" title="3">properties := modelcoreutil.ToPropertyModels(volume.Properties)
         tags := modelcoreutil.ToTagModels(volume.Tags)
-        systemIds := util.Map[vo.SystemVO, string](volume.Systems, func(system vo.SystemVO) *string </span><span class="cov0" title="0">{
-                return &amp;system.ID
-        }</span>)
-        <span class="cov2" title="2">publisherIds := util.Map[vo.PublisherVO, string](volume.Publishers, func(publisher vo.PublisherVO) *string </span><span class="cov0" title="0">{
-                return &amp;publisher.ID
-        }</span>)
-        <span class="cov2" title="2">studioIds := util.Map[vo.StudioVO, string](volume.Studios, func(studio vo.StudioVO) *string </span><span class="cov0" title="0">{
-                return &amp;studio.ID
-        }</span>)
-        <span class="cov2" title="2">licenseIds := util.Map[vo.LicenseVO, string](volume.Licenses, func(license vo.LicenseVO) *string </span><span class="cov0" title="0">{
-                return &amp;license.ID
-        }</span>)
+        systemIds := relationIDs(volume.Systems, func(s *vo.SystemVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
+        <span class="cov3" title="3">publisherIds := relationIDs(volume.Publishers, func(p *vo.PublisherVO) string </span><span class="cov1" title="1">{ return p.ID }</span>)
+        <span class="cov3" title="3">studioIds := relationIDs(volume.Studios, func(s *vo.StudioVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
+        <span class="cov3" title="3">licenseIds := relationIDs(volume.Licenses, func(l *vo.LicenseVO) string </span><span class="cov0" title="0">{ return l.ID }</span>)
 
-        <span class="cov2" title="2">model := models.Volume{
+        <span class="cov3" title="3">model := models.Volume{
                 ID:           id,
                 Title:        volume.Title,
                 Description:  volume.Description,
@@ -788,13 +771,13 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.Volume
                 logging.Logger.Error("Error while preparing Volume document for update", "error", err)
                 return nil, err
         }</span>
-        <span class="cov2" title="2">var update bson.D
+        <span class="cov3" title="3">var update bson.D
         if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
                 logging.Logger.Error("Error while unmarshaling Volume document for update", "error", err)
                 return nil, err
         }</span>
 
-        <span class="cov2" title="2">result, err := database.Db.Collection("volumes").UpdateOne(
+        <span class="cov3" title="3">result, err := database.Db.Collection("volumes").UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: id}},
                 bson.D{{Key: "$set", Value: update}},
@@ -804,12 +787,12 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.Volume
                 logging.Logger.Error("Error while updating Volume in database", "id", id, "error", err)
                 return nil, err
         }</span>
-        <span class="cov2" title="2">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
+        <span class="cov3" title="3">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
                 logging.Logger.Info(fmt.Sprintf("Volume not found for update, ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov2" title="2">return GetVolume(c, id)</span>
+        <span class="cov3" title="3">return GetVolume(c, id)</span>
 }
 
 func DeleteVolume(c context.Context, id string) error <span class="cov0" title="0">{
@@ -822,7 +805,7 @@ func DeleteVolume(c context.Context, id string) error <span class="cov0" title="
         return nil
 }</span>
 
-func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="cov6" title="9">{
+func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="cov6" title="12">{
         _, span := otel.Tracer("volume").Start(c, "db-get-volume", oteltrace.WithAttributes(attribute.String("id", id)))
         results, err := database.Query[models.Volume]("volumes", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         span.End()
@@ -831,45 +814,75 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="
                 return nil, err
         }</span>
 
-        <span class="cov6" title="9">if len(results) == 0 </span><span class="cov2" title="2">{
+        <span class="cov6" title="12">if len(results) == 0 </span><span class="cov2" title="2">{
                 logging.Logger.Info(fmt.Sprintf("Volume not found for ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov5" title="7">return volumeModelToVO(c, results[0]), nil</span>
+        <span class="cov5" title="10">return volumeModelToVO(c, results[0]), nil</span>
 }
 
-func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO <span class="cov10" title="42">{
-        systemVOs := util.Map[string, vo.SystemVO](model.SystemIds, func(id string) *vo.SystemVO </span><span class="cov0" title="0">{
-                vo, err := GetSystem(c, id)
+// relationIDs extracts each element's ID from a pointer-slice relationship field - the
+// counterpart to the *ByIDs functions below, which resolve IDs back into VOs. Both directions
+// live here rather than using util.Map (which always dereferences into a value slice) since
+// VolumeVO's relationship fields are pointer slices - see that struct's own doc comment for why.
+func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="64">{
+        ids := make([]string, 0, len(relations))
+        for _, r := range relations </span><span class="cov1" title="1">{
+                if r != nil </span><span class="cov1" title="1">{
+                        ids = append(ids, id(r))
+                }</span>
+        }
+        <span class="cov10" title="64">return ids</span>
+}
+
+func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO <span class="cov9" title="45">{
+        systemVOs := make([]*vo.SystemVO, 0, len(model.SystemIds))
+        for _, id := range model.SystemIds </span><span class="cov0" title="0">{
+                system, err := GetSystem(c, id)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No System found from Volume for ID %s: %s", id, err.Error()))
+                        continue</span>
+                }
+                <span class="cov0" title="0">if system != nil </span><span class="cov0" title="0">{
+                        systemVOs = append(systemVOs, system)
                 }</span>
-                <span class="cov0" title="0">return vo</span>
-        })
-        <span class="cov10" title="42">publisherVOs := util.Map[string, vo.PublisherVO](model.PublisherIds, func(id string) *vo.PublisherVO </span><span class="cov0" title="0">{
-                vo, err := GetPublisher(c, id)
+        }
+        <span class="cov9" title="45">publisherVOs := make([]*vo.PublisherVO, 0, len(model.PublisherIds))
+        for _, id := range model.PublisherIds </span><span class="cov2" title="2">{
+                publisher, err := GetPublisher(c, id)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No Publisher found from Volume for ID %s: %s", id, err.Error()))
+                        continue</span>
+                }
+                <span class="cov2" title="2">if publisher != nil </span><span class="cov2" title="2">{
+                        publisherVOs = append(publisherVOs, publisher)
                 }</span>
-                <span class="cov0" title="0">return vo</span>
-        })
-        <span class="cov10" title="42">studioVOs := util.Map[string, vo.StudioVO](model.StudioIds, func(id string) *vo.StudioVO </span><span class="cov0" title="0">{
-                vo, err := GetStudio(c, id)
+        }
+        <span class="cov9" title="45">studioVOs := make([]*vo.StudioVO, 0, len(model.StudioIds))
+        for _, id := range model.StudioIds </span><span class="cov0" title="0">{
+                studio, err := GetStudio(c, id)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No Studio found from Volume for ID %s: %s", id, err.Error()))
+                        continue</span>
+                }
+                <span class="cov0" title="0">if studio != nil </span><span class="cov0" title="0">{
+                        studioVOs = append(studioVOs, studio)
                 }</span>
-                <span class="cov0" title="0">return vo</span>
-        })
-        <span class="cov10" title="42">licenseVOs := util.Map[string, vo.LicenseVO](model.LicenseIds, func(id string) *vo.LicenseVO </span><span class="cov0" title="0">{
-                vo, err := GetLicense(c, id)
+        }
+        <span class="cov9" title="45">licenseVOs := make([]*vo.LicenseVO, 0, len(model.LicenseIds))
+        for _, id := range model.LicenseIds </span><span class="cov0" title="0">{
+                license, err := GetLicense(c, id)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No License found from Volume for ID %s: %s", id, err.Error()))
+                        continue</span>
+                }
+                <span class="cov0" title="0">if license != nil </span><span class="cov0" title="0">{
+                        licenseVOs = append(licenseVOs, license)
                 }</span>
-                <span class="cov0" title="0">return vo</span>
-        })
+        }
 
-        <span class="cov10" title="42">return &amp;vo.VolumeVO{
+        <span class="cov9" title="45">return &amp;vo.VolumeVO{
                 ID:          model.ID,
                 Title:       model.Title,
                 Description: model.Description,
@@ -908,7 +921,7 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
         }</span>
 
         <span class="cov4" title="5">vos := make([]*vo.VolumeVO, 0, len(models))
-        for _, model := range models </span><span class="cov9" title="35">{
+        for _, model := range models </span><span class="cov8" title="35">{
                 logging.Logger.Debug("processing volume model", "model", model)
                 vos = append(vos, volumeModelToVO(c, model))
         }</span>
