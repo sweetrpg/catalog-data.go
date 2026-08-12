@@ -1,4 +1,11 @@
 
+## 0.4.0 - 2026-08-12
+
+### Added
+- Wire CoverAssetId/SampleAssetIds through Add/Update/GetVolume
+
+
+
 ## 0.3.0 - 2026-08-12
 
 ### Added
