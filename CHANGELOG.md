@@ -1,4 +1,11 @@
 
+## 0.1.1 - 2026-08-12
+
+### Fixed
+- Use pointer-slice relationship VOs after catalog-objects.go v0.0.197
+
+
+
 ## 0.1.0 - 2026-08-11
 
 ### Added
