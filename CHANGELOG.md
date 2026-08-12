@@ -1,4 +1,11 @@
 
+## 0.5.0 - 2026-08-12
+
+### Added
+- Add write path for publisher, studio, person, and license
+
+
+
 ## 0.4.0 - 2026-08-12
 
 ### Added
