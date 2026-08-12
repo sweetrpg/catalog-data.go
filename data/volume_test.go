@@ -117,6 +117,23 @@ func (suite *VolumeDataTestSuite) TestUpdateVolume() {
 	assert.Equal(suite.T(), "Updated Test Volume", fetched.Title)
 }
 
+func (suite *VolumeDataTestSuite) TestUpdateVolumeSetsCoverAndSampleAssetIds() {
+	updated, err := UpdateVolume(suite.T().Context(), suite.seedVolumeID, &vo.VolumeVO{
+		Title:          "Volume With Assets",
+		CoverAssetId:   "cover-abc",
+		SampleAssetIds: []string{"sample-1", "sample-2"},
+	})
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), updated)
+	assert.Equal(suite.T(), "cover-abc", updated.CoverAssetId)
+	assert.Equal(suite.T(), []string{"sample-1", "sample-2"}, updated.SampleAssetIds)
+
+	fetched, err := GetVolume(suite.T().Context(), suite.seedVolumeID)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "cover-abc", fetched.CoverAssetId)
+	assert.Equal(suite.T(), []string{"sample-1", "sample-2"}, fetched.SampleAssetIds)
+}
+
 func (suite *VolumeDataTestSuite) TestUpdateVolumePreservesCreatedAudit() {
 	before, err := GetVolume(suite.T().Context(), suite.seedVolumeID)
 	assert.NoError(suite.T(), err)
