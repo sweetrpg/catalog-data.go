@@ -69,7 +69,11 @@
 				
 				<option value="file6">github.com/sweetrpg/catalog-data.go/data/system.go (0.0%)</option>
 				
-				<option value="file7">github.com/sweetrpg/catalog-data.go/data/volume.go (65.9%)</option>
+				<option value="file7">github.com/sweetrpg/catalog-data.go/data/volume.go (65.3%)</option>
+				
+				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
+				
+				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (73.8%)</option>
 				
 				</select>
 			</div>
@@ -977,7 +981,6 @@ import (
         "github.com/sweetrpg/catalog-objects.go/models"
         "github.com/sweetrpg/catalog-objects.go/vo"
         "github.com/sweetrpg/common.go/logging"
-        modelcore "github.com/sweetrpg/model-core.go/models"
         modelcoreutil "github.com/sweetrpg/model-core.go/util"
         modelcorevo "github.com/sweetrpg/model-core.go/vo"
         "github.com/sweetrpg/mongodb.go/database"
@@ -988,137 +991,104 @@ import (
         oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov6" title="17">{
+// AddVolume creates a volume's meta record and its first (live) version.
+func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov6" title="27">{
         logging.Logger.Info("AddVolume", "c", c, "volume", volume)
 
         _, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
-
-        properties := modelcoreutil.ToPropertyModels(volume.Properties)
-        logging.Logger.Debug("ToPropertyModels", "properties", properties)
-        tags := modelcoreutil.ToTagModels(volume.Tags)
-        logging.Logger.Debug("ToTagModels", "tags", tags)
-        systemIds := relationIDs(volume.Systems, func(s *vo.SystemVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
-        <span class="cov6" title="17">logging.Logger.Debug("map systems", "systemIds", systemIds)
-        publisherIds := relationIDs(volume.Publishers, func(p *vo.PublisherVO) string </span><span class="cov0" title="0">{ return p.ID }</span>)
-        <span class="cov6" title="17">logging.Logger.Debug("map publishers", "publisherIds", publisherIds)
-        studioIds := relationIDs(volume.Studios, func(s *vo.StudioVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
-        <span class="cov6" title="17">logging.Logger.Debug("map studios", "studioIds", studioIds)
-        licenseIds := relationIDs(volume.Licenses, func(l *vo.LicenseVO) string </span><span class="cov0" title="0">{ return l.ID }</span>)
-        <span class="cov6" title="17">logging.Logger.Debug("map licenses", "licenseIds", licenseIds)
+        defer span.End()
 
         now := time.Now()
-        model := models.Volume{
-                ID:             primitive.NewObjectID().Hex(),
-                Title:          volume.Title,
-                Description:    volume.Description,
-                Notes:          volume.Notes,
-                Format:         volume.Format,
-                CoverAssetId:   volume.CoverAssetId,
-                SampleAssetIds: volume.SampleAssetIds,
-                Properties:     properties,
-                Tags:           tags,
-                SystemIds:      systemIds,
-                PublisherIds:   publisherIds,
-                StudioIds:      studioIds,
-                LicenseIds:     licenseIds,
-                Auditable: modelcore.Auditable{
-                        CreatedAt: now,
-                        CreatedBy: volume.CreatedBy,
-                        UpdatedAt: now,
-                        UpdatedBy: volume.UpdatedBy,
-                        DeletedAt: nil,
-                        DeletedBy: nil,
-                },
+        metaID := primitive.NewObjectID().Hex()
+        meta := models.VolumeMeta{
+                ID:             metaID,
+                CurrentVersion: 1,
+                CreatedAt:      now,
+                CreatedBy:      volume.CreatedBy,
         }
-        logging.Logger.Debug("Volume model", "model", model)
-
-        _, err := database.Insert[models.Volume]("volumes", model)
-        logging.Logger.Debug("Inserted Volume", "id", model.ID, "err", err)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while inserting Volume object", "error", err)
+        if _, err := database.Insert[models.VolumeMeta](volumeMetaCollection, meta); err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while inserting VolumeMeta object", "error", err)
                 return nil, err
         }</span>
 
-        <span class="cov6" title="17">span.End()
+        <span class="cov6" title="27">version := volumeVOToVersionFields(volume)
+        version.ID = primitive.NewObjectID().Hex()
+        version.RecordID = metaID
+        version.Version = 1
+        version.State = models.VersionStateLive
+        version.BaseVersion = nil
+        version.SubmittedBy = volume.CreatedBy
+        version.SubmittedAt = now
+        if _, err := database.Insert[models.VolumeVersion](volumeVersionCollection, version); err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while inserting VolumeVersion object", "error", err)
+                return nil, err
+        }</span>
 
-        return &amp;model.ID, nil</span>
+        <span class="cov6" title="27">return &amp;metaID, nil</span>
 }
 
-func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO) (*vo.VolumeVO, error) <span class="cov4" title="6">{
-        logging.Logger.Info("UpdateVolume", "c", c, "id", id, "volume", volume)
+// UpdateVolume creates a new version of the volume rather than mutating the record in place.
+// For state VersionStateLive, the new version becomes current immediately and the previously
+// current version is archived; any other state (VersionStateSubmitted) leaves the current
+// pointer untouched. Returns the created version, or nil if the record doesn't exist.
+func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState) (*vo.VolumeVersionVO, error) <span class="cov5" title="14">{
+        logging.Logger.Info("UpdateVolume", "c", c, "id", id, "volume", volume, "state", state)
 
         _, span := otel.Tracer("volume").Start(c, "db-update-volume", oteltrace.WithAttributes(attribute.String("id", id)))
         defer span.End()
 
-        existing, err := GetVolume(c, id)
+        return createVolumeVersion(c, id, volume, state, volume.UpdatedBy, time.Now())
+}</span>
+
+// CreateSubmittedVolumeVersion creates a submitted version stamped with a caller-supplied
+// submittedBy/submittedAt, for migrating a pre-versioning proposed_changes entry into the
+// version model - unlike UpdateVolume, which always stamps "now", this preserves the original
+// proposal's submission audit per design.md's Migration Plan.
+func CreateSubmittedVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, submittedBy string, submittedAt time.Time) (*vo.VolumeVersionVO, error) <span class="cov1" title="1">{
+        return createVolumeVersion(c, id, volume, models.VersionStateSubmitted, submittedBy, submittedAt)
+}</span>
+
+func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState, submittedBy string, submittedAt time.Time) (*vo.VolumeVersionVO, error) <span class="cov5" title="15">{
+        meta, err := getVolumeMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while looking up existing Volume for update", "id", id, "error", err)
+                logging.Logger.Error("Error while looking up VolumeMeta for update", "id", id, "error", err)
                 return nil, err
         }</span>
-        <span class="cov4" title="6">if existing == nil </span><span class="cov1" title="1">{
+        <span class="cov5" title="15">if meta == nil </span><span class="cov1" title="1">{
                 logging.Logger.Info(fmt.Sprintf("Volume not found for update, ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov4" title="5">properties := modelcoreutil.ToPropertyModels(volume.Properties)
-        tags := modelcoreutil.ToTagModels(volume.Tags)
-        systemIds := relationIDs(volume.Systems, func(s *vo.SystemVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
-        <span class="cov4" title="5">publisherIds := relationIDs(volume.Publishers, func(p *vo.PublisherVO) string </span><span class="cov1" title="1">{ return p.ID }</span>)
-        <span class="cov4" title="5">studioIds := relationIDs(volume.Studios, func(s *vo.StudioVO) string </span><span class="cov0" title="0">{ return s.ID }</span>)
-        <span class="cov4" title="5">licenseIds := relationIDs(volume.Licenses, func(l *vo.LicenseVO) string </span><span class="cov0" title="0">{ return l.ID }</span>)
+        <span class="cov5" title="14">nextVersion, err := nextVolumeVersionNumber(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
 
-        <span class="cov4" title="5">model := models.Volume{
-                ID:             id,
-                Title:          volume.Title,
-                Description:    volume.Description,
-                Notes:          volume.Notes,
-                Format:         volume.Format,
-                CoverAssetId:   volume.CoverAssetId,
-                SampleAssetIds: volume.SampleAssetIds,
-                Properties:     properties,
-                Tags:           tags,
-                SystemIds:      systemIds,
-                PublisherIds:   publisherIds,
-                StudioIds:      studioIds,
-                LicenseIds:     licenseIds,
-                Auditable: modelcore.Auditable{
-                        CreatedAt: existing.CreatedAt,
-                        CreatedBy: existing.CreatedBy,
-                        UpdatedAt: time.Now(),
-                        UpdatedBy: volume.UpdatedBy,
-                        DeletedAt: nil,
-                        DeletedBy: nil,
-                },
+        <span class="cov5" title="14">baseVersion := meta.CurrentVersion
+        newVersion := volumeVOToVersionFields(volume)
+        newVersion.ID = primitive.NewObjectID().Hex()
+        newVersion.RecordID = id
+        newVersion.Version = nextVersion
+        newVersion.State = state
+        newVersion.BaseVersion = &amp;baseVersion
+        newVersion.SubmittedBy = submittedBy
+        newVersion.SubmittedAt = submittedAt
+
+        if _, err := database.Insert[models.VolumeVersion](volumeVersionCollection, newVersion); err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("Error while inserting VolumeVersion object", "error", err)
+                return nil, err
+        }</span>
+
+        <span class="cov5" title="14">if state == models.VersionStateLive </span><span class="cov4" title="8">{
+                if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov4" title="8">if err := setVolumeMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
         }
-        logging.Logger.Debug("Volume model for update", "model", model)
 
-        data, err := bson.Marshal(model)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while preparing Volume document for update", "error", err)
-                return nil, err
-        }</span>
-        <span class="cov4" title="5">var update bson.D
-        if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while unmarshaling Volume document for update", "error", err)
-                return nil, err
-        }</span>
-
-        <span class="cov4" title="5">result, err := database.Db.Collection("volumes").UpdateOne(
-                c,
-                bson.D{{Key: "_id", Value: id}},
-                bson.D{{Key: "$set", Value: update}},
-        )
-        logging.Logger.Debug("update result", "result", result, "err", err)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while updating Volume in database", "id", id, "error", err)
-                return nil, err
-        }</span>
-        <span class="cov4" title="5">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
-                logging.Logger.Info(fmt.Sprintf("Volume not found for update, ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov4" title="5">return GetVolume(c, id)</span>
+        <span class="cov5" title="14">return volumeVersionModelToVO(c, &amp;newVersion), nil</span>
 }
 
 func DeleteVolume(c context.Context, id string) error <span class="cov0" title="0">{
@@ -1131,132 +1101,716 @@ func DeleteVolume(c context.Context, id string) error <span class="cov0" title="
         return nil
 }</span>
 
-func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="cov7" title="20">{
+// GetVolume returns the flattened view of a volume - its meta record merged with its current
+// version's data - matching the shape this function returned before meta/version were split.
+func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="cov5" title="16">{
         _, span := otel.Tracer("volume").Start(c, "db-get-volume", oteltrace.WithAttributes(attribute.String("id", id)))
-        results, err := database.Query[models.Volume]("volumes", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
-        span.End()
+        defer span.End()
+
+        meta, err := getVolumeMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for Volume: %+v", err))
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for VolumeMeta: %+v", err))
                 return nil, err
         }</span>
-
-        <span class="cov7" title="20">if len(results) == 0 </span><span class="cov2" title="2">{
+        <span class="cov5" title="16">if meta == nil </span><span class="cov1" title="1">{
                 logging.Logger.Info(fmt.Sprintf("Volume not found for ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov6" title="18">return volumeModelToVO(c, results[0]), nil</span>
+        <span class="cov5" title="15">version, err := getVolumeVersion(c, id, meta.CurrentVersion)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for VolumeVersion: %+v", err))
+                return nil, err
+        }</span>
+        <span class="cov5" title="15">if version == nil </span><span class="cov0" title="0">{
+                err := fmt.Errorf("volume %s: meta points at missing current version %d", id, meta.CurrentVersion)
+                logging.Logger.Error(err.Error())
+                return nil, err
+        }</span>
+
+        <span class="cov5" title="15">return flattenVolume(c, meta, version), nil</span>
 }
 
 // relationIDs extracts each element's ID from a pointer-slice relationship field - the
 // counterpart to the *ByIDs functions below, which resolve IDs back into VOs. Both directions
 // live here rather than using util.Map (which always dereferences into a value slice) since
 // VolumeVO's relationship fields are pointer slices - see that struct's own doc comment for why.
-func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="88">{
+func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="164">{
         ids := make([]string, 0, len(relations))
         for _, r := range relations </span><span class="cov1" title="1">{
                 if r != nil </span><span class="cov1" title="1">{
                         ids = append(ids, id(r))
                 }</span>
         }
-        <span class="cov10" title="88">return ids</span>
+        <span class="cov10" title="164">return ids</span>
 }
 
-func volumeModelToVO(c context.Context, model *models.Volume) *vo.VolumeVO <span class="cov9" title="62">{
-        systemVOs := make([]*vo.SystemVO, 0, len(model.SystemIds))
-        for _, id := range model.SystemIds </span><span class="cov0" title="0">{
+func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioIds, licenseIds []string) (
+        systems []*vo.SystemVO, publishers []*vo.PublisherVO, studios []*vo.StudioVO, licenses []*vo.LicenseVO,
+) <span class="cov8" title="93">{
+        systems = make([]*vo.SystemVO, 0, len(systemIds))
+        for _, id := range systemIds </span><span class="cov0" title="0">{
                 system, err := GetSystem(c, id)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No System found from Volume for ID %s: %s", id, err.Error()))
                         continue</span>
                 }
                 <span class="cov0" title="0">if system != nil </span><span class="cov0" title="0">{
-                        systemVOs = append(systemVOs, system)
+                        systems = append(systems, system)
                 }</span>
         }
-        <span class="cov9" title="62">publisherVOs := make([]*vo.PublisherVO, 0, len(model.PublisherIds))
-        for _, id := range model.PublisherIds </span><span class="cov2" title="2">{
+        <span class="cov8" title="93">publishers = make([]*vo.PublisherVO, 0, len(publisherIds))
+        for _, id := range publisherIds </span><span class="cov2" title="2">{
                 publisher, err := GetPublisher(c, id)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No Publisher found from Volume for ID %s: %s", id, err.Error()))
                         continue</span>
                 }
                 <span class="cov2" title="2">if publisher != nil </span><span class="cov2" title="2">{
-                        publisherVOs = append(publisherVOs, publisher)
+                        publishers = append(publishers, publisher)
                 }</span>
         }
-        <span class="cov9" title="62">studioVOs := make([]*vo.StudioVO, 0, len(model.StudioIds))
-        for _, id := range model.StudioIds </span><span class="cov0" title="0">{
+        <span class="cov8" title="93">studios = make([]*vo.StudioVO, 0, len(studioIds))
+        for _, id := range studioIds </span><span class="cov0" title="0">{
                 studio, err := GetStudio(c, id)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No Studio found from Volume for ID %s: %s", id, err.Error()))
                         continue</span>
                 }
                 <span class="cov0" title="0">if studio != nil </span><span class="cov0" title="0">{
-                        studioVOs = append(studioVOs, studio)
+                        studios = append(studios, studio)
                 }</span>
         }
-        <span class="cov9" title="62">licenseVOs := make([]*vo.LicenseVO, 0, len(model.LicenseIds))
-        for _, id := range model.LicenseIds </span><span class="cov0" title="0">{
+        <span class="cov8" title="93">licenses = make([]*vo.LicenseVO, 0, len(licenseIds))
+        for _, id := range licenseIds </span><span class="cov0" title="0">{
                 license, err := GetLicense(c, id)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No License found from Volume for ID %s: %s", id, err.Error()))
                         continue</span>
                 }
                 <span class="cov0" title="0">if license != nil </span><span class="cov0" title="0">{
-                        licenseVOs = append(licenseVOs, license)
+                        licenses = append(licenses, license)
                 }</span>
         }
-
-        <span class="cov9" title="62">return &amp;vo.VolumeVO{
-                ID:             model.ID,
-                Title:          model.Title,
-                Description:    model.Description,
-                Notes:          model.Notes,
-                Format:         model.Format,
-                CoverAssetId:   model.CoverAssetId,
-                SampleAssetIds: model.SampleAssetIds,
-                Systems:        systemVOs,
-                Publishers:     publisherVOs,
-                Studios:        studioVOs,
-                Licenses:       licenseVOs,
-                Properties:     modelcoreutil.FromPropertyModels(model.Properties),
-                Tags:           modelcoreutil.FromTagModels(model.Tags),
-                AuditableVO: modelcorevo.AuditableVO{
-                        CreatedAt: model.CreatedAt,
-                        CreatedBy: model.CreatedBy,
-                        UpdatedAt: model.UpdatedAt,
-                        UpdatedBy: model.UpdatedBy,
-                        DeletedAt: model.DeletedAt,
-                        DeletedBy: model.DeletedBy,
-                },
-        }</span>
+        <span class="cov8" title="93">return</span>
 }
 
-func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) <span class="cov4" title="5">{
+// flattenVolume merges a meta record with its current version into the pre-versioning VolumeVO
+// shape: creation/deletion audit comes from meta, the "last updated" audit comes from the
+// version's own submission audit (its most recent live edit).
+func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO <span class="cov8" title="65">{
+        systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds)
+
+        return &amp;vo.VolumeVO{
+                ID:             meta.ID,
+                Title:          version.Title,
+                Description:    version.Description,
+                Notes:          version.Notes,
+                Format:         version.Format,
+                CoverAssetId:   version.CoverAssetId,
+                SampleAssetIds: version.SampleAssetIds,
+                Systems:        systems,
+                Publishers:     publishers,
+                Studios:        studios,
+                Licenses:       licenses,
+                Properties:     modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:           modelcoreutil.FromTagModels(version.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: meta.CreatedAt,
+                        CreatedBy: meta.CreatedBy,
+                        UpdatedAt: version.SubmittedAt,
+                        UpdatedBy: version.SubmittedBy,
+                        DeletedAt: meta.DeletedAt,
+                        DeletedBy: meta.DeletedBy,
+                },
+        }
+}</span>
+
+// volumeVersionModelToVO converts a version record on its own (no meta) into the version-history
+// API shape, resolving its relationship IDs the same way a flattened read does.
+func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *vo.VolumeVersionVO <span class="cov6" title="28">{
+        systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds)
+
+        return &amp;vo.VolumeVersionVO{
+                ID:               version.ID,
+                RecordID:         version.RecordID,
+                Version:          version.Version,
+                Title:            version.Title,
+                Description:      version.Description,
+                Notes:            version.Notes,
+                Format:           version.Format,
+                CoverAssetId:     version.CoverAssetId,
+                SampleAssetIds:   version.SampleAssetIds,
+                Systems:          systems,
+                Publishers:       publishers,
+                Studios:          studios,
+                Licenses:         licenses,
+                Properties:       modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:             modelcoreutil.FromTagModels(version.Tags),
+                State:            vo.VersionState(version.State),
+                BaseVersion:      version.BaseVersion,
+                SubmittedBy:      version.SubmittedBy,
+                SubmittedAt:      version.SubmittedAt,
+                ReviewedBy:       version.ReviewedBy,
+                ReviewedAt:       version.ReviewedAt,
+                ReviewNote:       version.ReviewNote,
+                ResultingVersion: version.ResultingVersion,
+        }
+}</span>
+
+// volumeVOToVersionFields maps a request VolumeVO's substantive fields onto a new
+// models.VolumeVersion - the caller fills in the version-lifecycle fields (ID, RecordID,
+// Version, State, BaseVersion, SubmittedBy/At).
+func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion <span class="cov7" title="41">{
+        return models.VolumeVersion{
+                Title:          volume.Title,
+                Description:    volume.Description,
+                Notes:          volume.Notes,
+                Format:         volume.Format,
+                CoverAssetId:   volume.CoverAssetId,
+                SampleAssetIds: volume.SampleAssetIds,
+                Properties:     modelcoreutil.ToPropertyModels(volume.Properties),
+                Tags:           modelcoreutil.ToTagModels(volume.Tags),
+                SystemIds:      relationIDs(volume.Systems, func(s *vo.SystemVO) string </span><span class="cov0" title="0">{ return s.ID }</span>),
+                PublisherIds:   relationIDs(volume.Publishers, func(p *vo.PublisherVO) string <span class="cov1" title="1">{ return p.ID }</span>),
+                StudioIds:      relationIDs(volume.Studios, func(s *vo.StudioVO) string <span class="cov0" title="0">{ return s.ID }</span>),
+                LicenseIds:     relationIDs(volume.Licenses, func(l *vo.LicenseVO) string <span class="cov0" title="0">{ return l.ID }</span>),
+        }
+}
+
+// QueryVolumes lists the current (live) version of every volume matching params - the live
+// version's data is exactly today's flat volume shape, since exactly one version per record is
+// ever live at a time.
+func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) <span class="cov3" title="5">{
         logging.Logger.Info("QueryVolumes", "c", c, "params", params)
 
         span := tracing.BuildSpanWithParams(c, "volumes", "db-get-volumes", params)
-        logging.Logger.Debug("query volumes", "span", span)
+        defer span.End()
 
         filter, sort, projection := apiutil.ConvertQueryParams(params)
+        filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
         logging.Logger.Debug("query volumes", "filter", filter, "sort", sort, "projection", projection)
-        models, err := database.Query[models.Volume]("volumes", filter, sort, projection, params.Start, params.Limit)
-        logging.Logger.Debug("got volumes", "models", models, "err", err)
-        span.End()
+
+        versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sort, projection, params.Start, params.Limit)
         if err != nil </span><span class="cov0" title="0">{
                 logging.Logger.Error(fmt.Sprintf("Error while querying database for Volumes: %+v", err))
                 return nil, err
         }</span>
 
-        <span class="cov4" title="5">vos := make([]*vo.VolumeVO, 0, len(models))
-        for _, model := range models </span><span class="cov8" title="44">{
-                logging.Logger.Debug("processing volume model", "model", model)
-                vos = append(vos, volumeModelToVO(c, model))
+        <span class="cov3" title="5">vos := make([]*vo.VolumeVO, 0, len(versions))
+        for _, version := range versions </span><span class="cov7" title="50">{
+                meta, err := getVolumeMeta(c, version.RecordID)
+                if err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No VolumeMeta found for VolumeVersion record %s: %s", version.RecordID, err.Error()))
+                        continue</span>
+                }
+                <span class="cov7" title="50">if meta == nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error(fmt.Sprintf("No VolumeMeta found for VolumeVersion record %s", version.RecordID))
+                        continue</span>
+                }
+                <span class="cov7" title="50">vos = append(vos, flattenVolume(c, meta, version))</span>
+        }
+
+        <span class="cov3" title="5">logging.Logger.Debug("returning volume value objects", "vos", vos)
+        return vos, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package data
+
+import (
+        "context"
+
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/common.go/logging"
+        "github.com/sweetrpg/mongodb.go/database"
+        "go.mongodb.org/mongo-driver/bson"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+// MigrateVolumes backfills every existing "volumes" document (the pre-versioning flat model)
+// into a meta record plus a single live version, per design.md's Migration Plan. Idempotent -
+// a record that already has a meta record (recognized by the same ID) is left untouched, so
+// this is safe to re-run after a partial failure.
+func MigrateVolumes(c context.Context) (int, error) <span class="cov7" title="3">{
+        all, err := database.Query[models.Volume]("volumes", bson.D{}, nil, nil, 0, 0)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error("MigrateVolumes: query existing volumes", "error", err)
+                return 0, err
         }</span>
 
-        <span class="cov4" title="5">logging.Logger.Debug("returning volume value objects", "vos", vos)
-        return vos, nil</span>
+        <span class="cov7" title="3">migrated := 0
+        for _, v := range all </span><span class="cov10" title="5">{
+                existing, err := getVolumeMeta(c, v.ID)
+                if err != nil </span><span class="cov0" title="0">{
+                        return migrated, err
+                }</span>
+                <span class="cov10" title="5">if existing != nil </span><span class="cov7" title="3">{
+                        continue</span>
+                }
+
+                <span class="cov4" title="2">meta := models.VolumeMeta{
+                        ID:             v.ID,
+                        CurrentVersion: 1,
+                        CreatedAt:      v.CreatedAt,
+                        CreatedBy:      v.CreatedBy,
+                        DeletedAt:      v.DeletedAt,
+                        DeletedBy:      v.DeletedBy,
+                }
+                if _, err := database.Insert[models.VolumeMeta](volumeMetaCollection, meta); err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error("MigrateVolumes: insert meta", "id", v.ID, "error", err)
+                        return migrated, err
+                }</span>
+
+                <span class="cov4" title="2">version := models.VolumeVersion{
+                        ID:             primitive.NewObjectID().Hex(),
+                        RecordID:       v.ID,
+                        Version:        1,
+                        Title:          v.Title,
+                        Description:    v.Description,
+                        Notes:          v.Notes,
+                        Format:         v.Format,
+                        CoverAssetId:   v.CoverAssetId,
+                        SampleAssetIds: v.SampleAssetIds,
+                        SystemIds:      v.SystemIds,
+                        PublisherIds:   v.PublisherIds,
+                        StudioIds:      v.StudioIds,
+                        LicenseIds:     v.LicenseIds,
+                        Properties:     v.Properties,
+                        Tags:           v.Tags,
+                        State:          models.VersionStateLive,
+                        BaseVersion:    nil,
+                        SubmittedBy:    v.UpdatedBy,
+                        SubmittedAt:    v.UpdatedAt,
+                }
+                if _, err := database.Insert[models.VolumeVersion](volumeVersionCollection, version); err != nil </span><span class="cov0" title="0">{
+                        logging.Logger.Error("MigrateVolumes: insert version", "id", v.ID, "error", err)
+                        return migrated, err
+                }</span>
+
+                <span class="cov4" title="2">migrated++</span>
+        }
+
+        <span class="cov7" title="3">return migrated, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">package data
+
+import (
+        "context"
+        "fmt"
+        "reflect"
+        "sort"
+        "time"
+
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        "github.com/sweetrpg/common.go/logging"
+        modelcore "github.com/sweetrpg/model-core.go/models"
+        "github.com/sweetrpg/mongodb.go/database"
+        "go.mongodb.org/mongo-driver/bson"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+        "go.mongodb.org/mongo-driver/mongo"
+        "go.mongodb.org/mongo-driver/mongo/options"
+)
+
+const (
+        volumeMetaCollection    = "volumes_meta"
+        volumeVersionCollection = "volumes_versions"
+)
+
+// EnsureVolumeVersioningIndexes creates the indexes volume version queries rely on: a unique
+// (record_id, version) index so a version number can never be reused for a record, and a
+// (record_id, state) index for the pending-submission lookup. Safe to call on every startup.
+func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7" title="28">{
+        _, err := database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+                Keys:    bson.D{{Key: "record_id", Value: 1}, {Key: "version", Value: 1}},
+                Options: options.Index().SetUnique(true),
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("volumes: create record_id+version index: %w", err)
+        }</span>
+
+        <span class="cov7" title="28">_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+                Keys: bson.D{{Key: "record_id", Value: 1}, {Key: "state", Value: 1}},
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("volumes: create record_id+state index: %w", err)
+        }</span>
+
+        <span class="cov7" title="28">return nil</span>
+}
+
+func getVolumeMeta(c context.Context, id string) (*models.VolumeMeta, error) <span class="cov10" title="90">{
+        results, err := database.Query[models.VolumeMeta](volumeMetaCollection, bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov10" title="90">if len(results) == 0 </span><span class="cov3" title="4">{
+                return nil, nil
+        }</span>
+        <span class="cov9" title="86">return results[0], nil</span>
+}
+
+func getVolumeVersion(c context.Context, recordID string, version int) (*models.VolumeVersion, error) <span class="cov7" title="31">{
+        filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
+        results, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, nil, 0, 1)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov7" title="31">if len(results) == 0 </span><span class="cov1" title="1">{
+                return nil, nil
+        }</span>
+        <span class="cov7" title="30">return results[0], nil</span>
+}
+
+func nextVolumeVersionNumber(c context.Context, recordID string) (int, error) <span class="cov6" title="16">{
+        filter := bson.D{{Key: "record_id", Value: recordID}}
+        sortOrder := bson.D{{Key: "version", Value: -1}}
+        results, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sortOrder, nil, 0, 1)
+        if err != nil </span><span class="cov0" title="0">{
+                return 0, err
+        }</span>
+        <span class="cov6" title="16">if len(results) == 0 </span><span class="cov0" title="0">{
+                return 1, nil
+        }</span>
+        <span class="cov6" title="16">return results[0].Version + 1, nil</span>
+}
+
+func setVolumeVersionState(c context.Context, recordID string, version int, fields bson.D) error <span class="cov6" title="17">{
+        filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
+        _, err := database.Db.Collection(volumeVersionCollection).UpdateOne(c, filter, bson.D{{Key: "$set", Value: fields}})
+        return err
+}</span>
+
+func archiveVolumeVersion(c context.Context, recordID string, version int) error <span class="cov5" title="12">{
+        return setVolumeVersionState(c, recordID, version, bson.D{{Key: "state", Value: string(models.VersionStateArchived)}})
+}</span>
+
+func setVolumeMetaCurrentVersion(c context.Context, recordID string, version int) error <span class="cov5" title="12">{
+        _, err := database.Db.Collection(volumeMetaCollection).UpdateOne(
+                c,
+                bson.D{{Key: "_id", Value: recordID}},
+                bson.D{{Key: "$set", Value: bson.D{{Key: "current_version", Value: version}}}},
+        )
+        return err
+}</span>
+
+// ListVolumeVersions returns every version of a volume, newest first.
+func ListVolumeVersions(c context.Context, id string) ([]*vo.VolumeVersionVO, error) <span class="cov3" title="3">{
+        filter := bson.D{{Key: "record_id", Value: id}}
+        sortOrder := bson.D{{Key: "version", Value: -1}}
+        versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sortOrder, nil, 0, 0)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for VolumeVersions: %+v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov3" title="3">vos := make([]*vo.VolumeVersionVO, 0, len(versions))
+        for _, version := range versions </span><span class="cov4" title="5">{
+                vos = append(vos, volumeVersionModelToVO(c, version))
+        }</span>
+        <span class="cov3" title="3">return vos, nil</span>
+}
+
+// GetVolumeVersion returns one version's full snapshot, regardless of whether it's current.
+func GetVolumeVersion(c context.Context, id string, version int) (*vo.VolumeVersionVO, error) <span class="cov4" title="6">{
+        result, err := getVolumeVersion(c, id, version)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for VolumeVersion: %+v", err))
+                return nil, err
+        }</span>
+        <span class="cov4" title="6">if result == nil </span><span class="cov1" title="1">{
+                return nil, nil
+        }</span>
+        <span class="cov4" title="5">return volumeVersionModelToVO(c, result), nil</span>
+}
+
+// volumeVersionSubstantiveFields are the fields a submission can change and a review can
+// selectively accept - everything on VolumeVersion except its version-lifecycle bookkeeping.
+var volumeVersionSubstantiveFields = []string{
+        "title", "description", "notes", "format", "cover_asset_id", "sample_asset_ids",
+        "system_ids", "publisher_ids", "studio_ids", "license_ids", "properties", "tags",
+}
+
+func volumeVersionFieldValue(v *models.VolumeVersion, field string) any <span class="cov9" title="56">{
+        switch field </span>{
+        case "title":<span class="cov5" title="10">
+                return v.Title</span>
+        case "description":<span class="cov4" title="6">
+                return v.Description</span>
+        case "notes":<span class="cov3" title="4">
+                return v.Notes</span>
+        case "format":<span class="cov3" title="4">
+                return v.Format</span>
+        case "cover_asset_id":<span class="cov3" title="4">
+                return v.CoverAssetId</span>
+        case "sample_asset_ids":<span class="cov3" title="4">
+                return v.SampleAssetIds</span>
+        case "system_ids":<span class="cov3" title="4">
+                return v.SystemIds</span>
+        case "publisher_ids":<span class="cov3" title="4">
+                return v.PublisherIds</span>
+        case "studio_ids":<span class="cov3" title="4">
+                return v.StudioIds</span>
+        case "license_ids":<span class="cov3" title="4">
+                return v.LicenseIds</span>
+        case "properties":<span class="cov3" title="4">
+                return v.Properties</span>
+        case "tags":<span class="cov3" title="4">
+                return v.Tags</span>
+        default:<span class="cov0" title="0">
+                return nil</span>
+        }
+}
+
+func setVolumeVersionFieldValue(v *models.VolumeVersion, field string, value any) <span class="cov2" title="2">{
+        switch field </span>{
+        case "title":<span class="cov2" title="2">
+                v.Title = value.(string)</span>
+        case "description":<span class="cov0" title="0">
+                v.Description = value.(string)</span>
+        case "notes":<span class="cov0" title="0">
+                v.Notes = value.(string)</span>
+        case "format":<span class="cov0" title="0">
+                v.Format = value.(string)</span>
+        case "cover_asset_id":<span class="cov0" title="0">
+                v.CoverAssetId = value.(string)</span>
+        case "sample_asset_ids":<span class="cov0" title="0">
+                v.SampleAssetIds = value.([]string)</span>
+        case "system_ids":<span class="cov0" title="0">
+                v.SystemIds = value.([]string)</span>
+        case "publisher_ids":<span class="cov0" title="0">
+                v.PublisherIds = value.([]string)</span>
+        case "studio_ids":<span class="cov0" title="0">
+                v.StudioIds = value.([]string)</span>
+        case "license_ids":<span class="cov0" title="0">
+                v.LicenseIds = value.([]string)</span>
+        case "properties":<span class="cov0" title="0">
+                v.Properties = value.([]modelcore.Property)</span>
+        case "tags":<span class="cov0" title="0">
+                v.Tags = value.([]modelcore.Tag)</span>
+        }
+}
+
+// volumeVersionChangedFields returns the substantive fields where submitted differs from base.
+func volumeVersionChangedFields(submitted, base *models.VolumeVersion) []string <span class="cov2" title="2">{
+        var changed []string
+        for _, field := range volumeVersionSubstantiveFields </span><span class="cov7" title="24">{
+                if !reflect.DeepEqual(volumeVersionFieldValue(submitted, field), volumeVersionFieldValue(base, field)) </span><span class="cov3" title="4">{
+                        changed = append(changed, field)
+                }</span>
+        }
+        <span class="cov2" title="2">return changed</span>
+}
+
+func intersectFields(fields, selected []string) []string <span class="cov1" title="1">{
+        selectedSet := make(map[string]bool, len(selected))
+        for _, f := range selected </span><span class="cov1" title="1">{
+                selectedSet[f] = true
+        }</span>
+        <span class="cov1" title="1">var out []string
+        for _, f := range fields </span><span class="cov2" title="2">{
+                if selectedSet[f] </span><span class="cov1" title="1">{
+                        out = append(out, f)
+                }</span>
+        }
+        <span class="cov1" title="1">return out</span>
+}
+
+// AcceptVolumeVersion reviews a submitted version. selectedFields == nil accepts every field the
+// submission changed (full accept); a non-nil slice accepts only that subset. If the submission's
+// baseVersion no longer matches the record's actual current version, a field being accepted whose
+// actual-current value has itself diverged from baseVersion is excluded as a conflict rather than
+// applied - reported back via the returned conflicts slice.
+//
+// A clean full accept (no drift, no conflicts) promotes the submitted version itself to live. Any
+// other outcome (a selected-fields accept, or a full accept with conflicts excluded) derives a new
+// version from the actual current version with only the accepted fields overlaid, promotes that
+// derived version to live, and marks the submitted version partially_accepted, referencing it.
+func AcceptVolumeVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string) (*vo.VolumeVersionVO, []string, error) <span class="cov3" title="3">{
+        submitted, err := getVolumeVersion(c, id, version)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov3" title="3">if submitted == nil </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("volume %s: version %d not found", id, version)
+        }</span>
+        <span class="cov3" title="3">if submitted.State != models.VersionStateSubmitted </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("volume %s: version %d is not submitted (state: %s)", id, version, submitted.State)
+        }</span>
+        <span class="cov3" title="3">if submitted.BaseVersion == nil </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("volume %s: version %d has no base version to review against", id, version)
+        }</span>
+
+        <span class="cov3" title="3">meta, err := getVolumeMeta(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov3" title="3">if meta == nil </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("volume %s: meta record not found", id)
+        }</span>
+
+        <span class="cov3" title="3">current, err := getVolumeVersion(c, id, meta.CurrentVersion)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov3" title="3">if current == nil </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("volume %s: current version %d not found", id, meta.CurrentVersion)
+        }</span>
+
+        <span class="cov3" title="3">now := time.Now()
+
+        if selectedFields == nil &amp;&amp; *submitted.BaseVersion == meta.CurrentVersion </span><span class="cov1" title="1">{
+                if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
+                        return nil, nil, err
+                }</span>
+                <span class="cov1" title="1">submitted.State = models.VersionStateLive
+                submitted.ReviewedBy = &amp;reviewedBy
+                submitted.ReviewedAt = &amp;now
+                submitted.ReviewNote = reviewNote
+                if err := setVolumeVersionState(c, id, version, bson.D{
+                        {Key: "state", Value: string(models.VersionStateLive)},
+                        {Key: "reviewed_by", Value: reviewedBy},
+                        {Key: "reviewed_at", Value: now},
+                        {Key: "review_note", Value: reviewNote},
+                }); err != nil </span><span class="cov0" title="0">{
+                        return nil, nil, err
+                }</span>
+                <span class="cov1" title="1">if err := setVolumeMetaCurrentVersion(c, id, version); err != nil </span><span class="cov0" title="0">{
+                        return nil, nil, err
+                }</span>
+                <span class="cov1" title="1">return volumeVersionModelToVO(c, submitted), nil, nil</span>
+        }
+
+        <span class="cov2" title="2">baseVersion, err := getVolumeVersion(c, id, *submitted.BaseVersion)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov2" title="2">if baseVersion == nil </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("volume %s: base version %d not found", id, *submitted.BaseVersion)
+        }</span>
+
+        <span class="cov2" title="2">changed := volumeVersionChangedFields(submitted, baseVersion)
+        target := changed
+        if selectedFields != nil </span><span class="cov1" title="1">{
+                target = intersectFields(changed, selectedFields)
+        }</span>
+        <span class="cov2" title="2">sort.Strings(target)
+
+        derived := *current
+        var conflicts []string
+        var accepted []string
+        for _, field := range target </span><span class="cov3" title="3">{
+                if !reflect.DeepEqual(volumeVersionFieldValue(current, field), volumeVersionFieldValue(baseVersion, field)) </span><span class="cov1" title="1">{
+                        conflicts = append(conflicts, field)
+                        continue</span>
+                }
+                <span class="cov2" title="2">setVolumeVersionFieldValue(&amp;derived, field, volumeVersionFieldValue(submitted, field))
+                accepted = append(accepted, field)</span>
+        }
+
+        <span class="cov2" title="2">nextVersion, err := nextVolumeVersionNumber(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+
+        <span class="cov2" title="2">derived.ID = primitive.NewObjectID().Hex()
+        derived.RecordID = id
+        derived.Version = nextVersion
+        derived.State = models.VersionStateLive
+        derived.BaseVersion = &amp;meta.CurrentVersion
+        derived.SubmittedBy = submitted.SubmittedBy
+        derived.SubmittedAt = now
+        derived.ReviewedBy = &amp;reviewedBy
+        derived.ReviewedAt = &amp;now
+        derived.ReviewNote = reviewNote
+        derived.ResultingVersion = nil
+
+        if _, err := database.Insert[models.VolumeVersion](volumeVersionCollection, derived); err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov2" title="2">if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov2" title="2">if err := setVolumeMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov2" title="2">if err := setVolumeVersionState(c, id, version, bson.D{
+                {Key: "state", Value: string(models.VersionStatePartiallyAccepted)},
+                {Key: "reviewed_by", Value: reviewedBy},
+                {Key: "reviewed_at", Value: now},
+                {Key: "review_note", Value: reviewNote},
+                {Key: "resulting_version", Value: nextVersion},
+        }); err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+
+        <span class="cov2" title="2">logging.Logger.Info("AcceptVolumeVersion: derived version", "id", id, "version", nextVersion, "accepted", accepted, "conflicts", conflicts)
+
+        return volumeVersionModelToVO(c, &amp;derived), conflicts, nil</span>
+}
+
+// RejectVolumeVersion marks a submitted version rejected, with an optional note. The record's
+// current-version pointer is unchanged.
+func RejectVolumeVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error <span class="cov1" title="1">{
+        submitted, err := getVolumeVersion(c, id, version)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov1" title="1">if submitted == nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("volume %s: version %d not found", id, version)
+        }</span>
+        <span class="cov1" title="1">if submitted.State != models.VersionStateSubmitted </span><span class="cov0" title="0">{
+                return fmt.Errorf("volume %s: version %d is not submitted (state: %s)", id, version, submitted.State)
+        }</span>
+
+        <span class="cov1" title="1">now := time.Now()
+        return setVolumeVersionState(c, id, version, bson.D{
+                {Key: "state", Value: string(models.VersionStateRejected)},
+                {Key: "reviewed_by", Value: reviewedBy},
+                {Key: "reviewed_at", Value: now},
+                {Key: "review_note", Value: reviewNote},
+        })</span>
+}
+
+// SetCurrentVolumeVersion rolls a record back (or forward) to an arbitrary existing version,
+// independent of the submit/review flow - marking that version live and archiving whichever
+// version was previously current.
+func SetCurrentVolumeVersion(c context.Context, id string, version int) (*vo.VolumeVersionVO, error) <span class="cov1" title="1">{
+        meta, err := getVolumeMeta(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if meta == nil </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+
+        <span class="cov1" title="1">target, err := getVolumeVersion(c, id, version)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if target == nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("volume %s: version %d not found", id, version)
+        }</span>
+
+        <span class="cov1" title="1">if version == meta.CurrentVersion </span><span class="cov0" title="0">{
+                return volumeVersionModelToVO(c, target), nil
+        }</span>
+
+        <span class="cov1" title="1">if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if err := setVolumeVersionState(c, id, version, bson.D{{Key: "state", Value: string(models.VersionStateLive)}}); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if err := setVolumeMetaCurrentVersion(c, id, version); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov1" title="1">target.State = models.VersionStateLive
+        return volumeVersionModelToVO(c, target), nil</span>
 }
 </pre>
 		
