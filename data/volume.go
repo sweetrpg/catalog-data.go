@@ -66,6 +66,18 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO, state model
 	_, span := otel.Tracer("volume").Start(c, "db-update-volume", oteltrace.WithAttributes(attribute.String("id", id)))
 	defer span.End()
 
+	return createVolumeVersion(c, id, volume, state, volume.UpdatedBy, time.Now())
+}
+
+// CreateSubmittedVolumeVersion creates a submitted version stamped with a caller-supplied
+// submittedBy/submittedAt, for migrating a pre-versioning proposed_changes entry into the
+// version model - unlike UpdateVolume, which always stamps "now", this preserves the original
+// proposal's submission audit per design.md's Migration Plan.
+func CreateSubmittedVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, submittedBy string, submittedAt time.Time) (*vo.VolumeVersionVO, error) {
+	return createVolumeVersion(c, id, volume, models.VersionStateSubmitted, submittedBy, submittedAt)
+}
+
+func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState, submittedBy string, submittedAt time.Time) (*vo.VolumeVersionVO, error) {
 	meta, err := getVolumeMeta(c, id)
 	if err != nil {
 		logging.Logger.Error("Error while looking up VolumeMeta for update", "id", id, "error", err)
@@ -81,7 +93,6 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO, state model
 		return nil, err
 	}
 
-	now := time.Now()
 	baseVersion := meta.CurrentVersion
 	newVersion := volumeVOToVersionFields(volume)
 	newVersion.ID = primitive.NewObjectID().Hex()
@@ -89,8 +100,8 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO, state model
 	newVersion.Version = nextVersion
 	newVersion.State = state
 	newVersion.BaseVersion = &baseVersion
-	newVersion.SubmittedBy = volume.UpdatedBy
-	newVersion.SubmittedAt = now
+	newVersion.SubmittedBy = submittedBy
+	newVersion.SubmittedAt = submittedAt
 
 	if _, err := database.Insert[models.VolumeVersion](volumeVersionCollection, newVersion); err != nil {
 		logging.Logger.Error("Error while inserting VolumeVersion object", "error", err)
