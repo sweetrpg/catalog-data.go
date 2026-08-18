@@ -75,7 +75,7 @@
 				
 				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
 				
-				<option value="file10">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (68.0%)</option>
+				<option value="file10">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (64.6%)</option>
 				
 				</select>
 			</div>
@@ -2805,6 +2805,41 @@ func CountSubmittedVolumeVersionsBySubmitter(c context.Context, submittedBy stri
         }
         return database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
 }</span>
+
+// PendingStagedAssetIds is the set of staged cover/sample asset ids currently referenced by a
+// pending (state: submitted) volume version - used by assets-web's reclaim job to avoid
+// deleting a staged file a pending submission still needs.
+type PendingStagedAssetIds struct {
+        CoverAssetIds  []string `json:"coverAssetIds"`
+        SampleAssetIds []string `json:"sampleAssetIds"`
+}
+
+// ListPendingStagedAssetIds scans every submitted volume version for a staged cover/sample
+// reference. Cheap at current data volumes (small pending-submission counts, matching the
+// platform's existing "no new index/search endpoint needed yet" precedent for similarly-sized
+// collections) - a full collection scan, not a lookup by id, since the reclaim job needs the
+// whole referenced set each run.
+func ListPendingStagedAssetIds(c context.Context) (*PendingStagedAssetIds, error) <span class="cov0" title="0">{
+        filter := bson.D{{Key: "state", Value: string(models.VersionStateSubmitted)}}
+        projection := bson.D{
+                {Key: "staged_cover_asset_id", Value: 1},
+                {Key: "staged_sample_asset_ids", Value: 1},
+        }
+        versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, projection, 0, 0)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for pending staged asset ids: %+v", err))
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">result := &amp;PendingStagedAssetIds{CoverAssetIds: []string{}, SampleAssetIds: []string{}}
+        for _, version := range versions </span><span class="cov0" title="0">{
+                if version.StagedCoverAssetId != nil &amp;&amp; *version.StagedCoverAssetId != "" </span><span class="cov0" title="0">{
+                        result.CoverAssetIds = append(result.CoverAssetIds, *version.StagedCoverAssetId)
+                }</span>
+                <span class="cov0" title="0">result.SampleAssetIds = append(result.SampleAssetIds, version.StagedSampleAssetIds...)</span>
+        }
+        <span class="cov0" title="0">return result, nil</span>
+}
 
 // RejectVolumeVersion marks a submitted version rejected, with an optional note. The record's
 // current-version pointer is unchanged.
