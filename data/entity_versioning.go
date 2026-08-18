@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"reflect"
 	"sort"
 	"time"
@@ -15,6 +16,17 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// parseWebsite best-effort parses a VO's plain-string website into the url.URL the models layer
+// still stores (Mongo bson round-trips url.URL fine - only the JSON:API wire format needed the
+// plain-string fix). An unparseable or empty string yields the zero value, matching the
+// server-layer field accessors' same silent-skip-on-parse-error behavior.
+func parseWebsite(s string) url.URL {
+	if u, err := url.Parse(s); err == nil && u != nil {
+		return *u
+	}
+	return url.URL{}
+}
 
 // entityFieldAccessor reads/writes one substantive field on a version record - the version-model
 // counterpart of server/entity_patch.go's entityFieldAccessor, used here for the accept-selected

@@ -45,7 +45,7 @@ func EnsureStudioVersioningIndexes(c context.Context) error {
 func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO {
 	return &vo.StudioVersionVO{
 		ID: version.ID, RecordID: version.RecordID, Version: version.Version,
-		Name: version.Name, Website: version.Website, Notes: version.Notes,
+		Name: version.Name, Website: version.Website.String(), Notes: version.Notes,
 		Properties: modelcoreutil.FromPropertyModels(version.Properties),
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
 		VersionLifecycleVO: vo.VersionLifecycleVO{
@@ -59,7 +59,7 @@ func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO {
 
 func studioVersionFields(studio *vo.StudioVO) models.StudioVersion {
 	return models.StudioVersion{
-		Name: studio.Name, Website: studio.Website, Notes: studio.Notes,
+		Name: studio.Name, Website: parseWebsite(studio.Website), Notes: studio.Notes,
 		Properties: modelcoreutil.ToPropertyModels(studio.Properties),
 		Tags:       modelcoreutil.ToTagModels(studio.Tags),
 	}
@@ -67,7 +67,7 @@ func studioVersionFields(studio *vo.StudioVO) models.StudioVersion {
 
 func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.StudioVO {
 	return &vo.StudioVO{
-		ID: meta.ID, Name: version.Name, Website: version.Website, Notes: version.Notes,
+		ID: meta.ID, Name: version.Name, Website: version.Website.String(), Notes: version.Notes,
 		Properties: modelcoreutil.FromPropertyModels(version.Properties),
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
 		AuditableVO: modelcorevo.AuditableVO{

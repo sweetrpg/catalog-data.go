@@ -52,7 +52,7 @@ func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO {
 	return &vo.LicenseVersionVO{
 		ID: version.ID, RecordID: version.RecordID, Version: version.Version,
 		Title: version.Title, ShortTitle: version.ShortTitle, LicenseVer: version.LicenseVer,
-		Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website,
+		Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website.String(),
 		Status: version.Status, Availability: version.Availability, Notes: version.Notes,
 		Properties: modelcoreutil.FromPropertyModels(version.Properties),
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
@@ -68,7 +68,7 @@ func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO {
 func licenseVersionFields(license *vo.LicenseVO) models.LicenseVersion {
 	return models.LicenseVersion{
 		Title: license.Title, ShortTitle: license.ShortTitle, LicenseVer: license.Version,
-		Deed: license.Deed, LegalCode: license.LegalCode, Website: license.Website,
+		Deed: license.Deed, LegalCode: license.LegalCode, Website: parseWebsite(license.Website),
 		Status: license.Status, Availability: license.Availability, Notes: license.Notes,
 		Properties: modelcoreutil.ToPropertyModels(license.Properties),
 		Tags:       modelcoreutil.ToTagModels(license.Tags),
@@ -78,7 +78,7 @@ func licenseVersionFields(license *vo.LicenseVO) models.LicenseVersion {
 func flattenLicense(meta *models.EntityMeta, version *models.LicenseVersion) *vo.LicenseVO {
 	return &vo.LicenseVO{
 		ID: meta.ID, Title: version.Title, ShortTitle: version.ShortTitle, Version: version.LicenseVer,
-		Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website,
+		Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website.String(),
 		Status: version.Status, Availability: version.Availability, Notes: version.Notes,
 		Properties: modelcoreutil.FromPropertyModels(version.Properties),
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
