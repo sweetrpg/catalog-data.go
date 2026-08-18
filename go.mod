@@ -1,11 +1,11 @@
 module github.com/sweetrpg/catalog-data.go
 
-go 1.25.0
+go 1.26.5
 
 require (
 	github.com/stretchr/testify v1.11.1
 	github.com/sweetrpg/api-core.go v0.0.436
-	github.com/sweetrpg/catalog-objects.go v0.2.0
+	github.com/sweetrpg/catalog-objects.go v0.3.0
 	github.com/sweetrpg/common.go v0.0.16
 	github.com/sweetrpg/model-core.go v0.0.173
 	github.com/sweetrpg/mongodb.go v0.0.193
@@ -49,5 +49,3 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/sweetrpg/catalog-objects.go => ../catalog-objects/go

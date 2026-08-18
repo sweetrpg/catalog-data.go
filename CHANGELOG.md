@@ -1,4 +1,12 @@
 
+## 0.6.0 - 2026-08-14
+
+### Added
+- Rewrite volume data access around meta+version model
+- Add volume migration backfill
+
+
+
 ## 0.5.0 - 2026-08-12
 
 ### Added
