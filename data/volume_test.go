@@ -205,12 +205,13 @@ func (suite *VolumeDataTestSuite) TestUpdateVolumeNotFound() {
 // UpdateVolume/GetVolume don't marshal jsonapi themselves, but this confirms the pointer-slice
 // round-trips correctly at this layer, which is the part that regressed.
 func (suite *VolumeDataTestSuite) TestUpdateVolumeWithPublisherRelationship() {
-	_, err := database.Insert("publishers", models.Publisher{ID: "pub-test-1", Name: "Test Publisher"})
+	publisherID, err := AddPublisher(suite.T().Context(), &vo.PublisherVO{Name: "Test Publisher"})
 	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), publisherID)
 
 	_, err = UpdateVolume(suite.T().Context(), suite.seedVolumeID, &vo.VolumeVO{
 		Title:      "Volume With Publisher",
-		Publishers: []*vo.PublisherVO{{ID: "pub-test-1"}},
+		Publishers: []*vo.PublisherVO{{ID: *publisherID}},
 	}, models.VersionStateLive)
 	assert.NoError(suite.T(), err)
 
@@ -218,7 +219,7 @@ func (suite *VolumeDataTestSuite) TestUpdateVolumeWithPublisherRelationship() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), fetched)
 	assert.Len(suite.T(), fetched.Publishers, 1)
-	assert.Equal(suite.T(), "pub-test-1", fetched.Publishers[0].ID)
+	assert.Equal(suite.T(), *publisherID, fetched.Publishers[0].ID)
 	assert.Equal(suite.T(), "Test Publisher", fetched.Publishers[0].Name)
 }
 
@@ -253,7 +254,7 @@ func (suite *VolumeDataTestSuite) TestAcceptVolumeVersionFullCleanPromotesSubmis
 	}, models.VersionStateSubmitted)
 	assert.NoError(suite.T(), err)
 
-	accepted, conflicts, err := AcceptVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version, nil, "editor-1", nil)
+	accepted, conflicts, err := AcceptVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version, nil, "editor-1", nil, nil, nil)
 	assert.NoError(suite.T(), err)
 	assert.Empty(suite.T(), conflicts)
 	assert.Equal(suite.T(), submitted.Version, accepted.Version)
@@ -271,7 +272,7 @@ func (suite *VolumeDataTestSuite) TestAcceptVolumeVersionSelectedFieldsDerivesNe
 	}, models.VersionStateSubmitted)
 	assert.NoError(suite.T(), err)
 
-	accepted, conflicts, err := AcceptVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version, []string{"title"}, "editor-1", nil)
+	accepted, conflicts, err := AcceptVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version, []string{"title"}, "editor-1", nil, nil, nil)
 	assert.NoError(suite.T(), err)
 	assert.Empty(suite.T(), conflicts)
 	assert.NotEqual(suite.T(), submitted.Version, accepted.Version)
@@ -299,7 +300,7 @@ func (suite *VolumeDataTestSuite) TestAcceptVolumeVersionConflictExcludesDrifted
 	}, models.VersionStateLive)
 	assert.NoError(suite.T(), err)
 
-	accepted, conflicts, err := AcceptVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version, nil, "editor-1", nil)
+	accepted, conflicts, err := AcceptVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version, nil, "editor-1", nil, nil, nil)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), []string{"description"}, conflicts)
 	assert.Equal(suite.T(), "Submitted Title", accepted.Title)

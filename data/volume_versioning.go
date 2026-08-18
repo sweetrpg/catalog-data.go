@@ -232,7 +232,14 @@ func intersectFields(fields, selected []string) []string {
 // other outcome (a selected-fields accept, or a full accept with conflicts excluded) derives a new
 // version from the actual current version with only the accepted fields overlaid, promotes that
 // derived version to live, and marks the submitted version partially_accepted, referencing it.
-func AcceptVolumeVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string) (*vo.VolumeVersionVO, []string, error) {
+//
+// liveCoverAssetId/liveSampleAssetIds are an optional override (nil/nil for the common case) -
+// see design.md's "Staged edit-session assets ride on the submitted version as separate staged
+// fields": when the submitted version being accepted carries staged (unpromoted) assets, the
+// caller promotes them via the asset store first and passes the resulting live ids here, so the
+// version that goes live carries live ids rather than the version's own (still-unpromoted)
+// coverAssetId/sampleAssetIds.
+func AcceptVolumeVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string, liveCoverAssetId *string, liveSampleAssetIds []string) (*vo.VolumeVersionVO, []string, error) {
 	submitted, err := getVolumeVersion(c, id, version)
 	if err != nil {
 		return nil, nil, err
@@ -273,12 +280,25 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
 		submitted.ReviewedBy = &reviewedBy
 		submitted.ReviewedAt = &now
 		submitted.ReviewNote = reviewNote
-		if err := setVolumeVersionState(c, id, version, bson.D{
+		update := bson.D{
 			{Key: "state", Value: string(models.VersionStateLive)},
 			{Key: "reviewed_by", Value: reviewedBy},
 			{Key: "reviewed_at", Value: now},
 			{Key: "review_note", Value: reviewNote},
-		}); err != nil {
+			{Key: "staged_cover_asset_id", Value: nil},
+			{Key: "staged_sample_asset_ids", Value: nil},
+		}
+		submitted.StagedCoverAssetId = nil
+		submitted.StagedSampleAssetIds = nil
+		if liveCoverAssetId != nil {
+			update = append(update, bson.E{Key: "cover_asset_id", Value: *liveCoverAssetId})
+			submitted.CoverAssetId = *liveCoverAssetId
+		}
+		if liveSampleAssetIds != nil {
+			update = append(update, bson.E{Key: "sample_asset_ids", Value: liveSampleAssetIds})
+			submitted.SampleAssetIds = liveSampleAssetIds
+		}
+		if err := setVolumeVersionState(c, id, version, update); err != nil {
 			return nil, nil, err
 		}
 		if err := setVolumeMetaCurrentVersion(c, id, version); err != nil {
@@ -330,6 +350,14 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
 	derived.ReviewedAt = &now
 	derived.ReviewNote = reviewNote
 	derived.ResultingVersion = nil
+	derived.StagedCoverAssetId = nil
+	derived.StagedSampleAssetIds = nil
+	if liveCoverAssetId != nil {
+		derived.CoverAssetId = *liveCoverAssetId
+	}
+	if liveSampleAssetIds != nil {
+		derived.SampleAssetIds = liveSampleAssetIds
+	}
 
 	if _, err := database.Insert[models.VolumeVersion](volumeVersionCollection, derived); err != nil {
 		return nil, nil, err
@@ -355,6 +383,17 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
 	return volumeVersionModelToVO(c, &derived), conflicts, nil
 }
 
+// CountSubmittedVolumeVersionsBySubmitter counts a submitter's currently-pending (state:
+// submitted) volume versions - the version-model replacement for
+// proposedchanges.CountPendingBySubmitter, used by submissioncap's cap check.
+func CountSubmittedVolumeVersionsBySubmitter(c context.Context, submittedBy string) (int64, error) {
+	filter := bson.D{
+		{Key: "submitted_by", Value: submittedBy},
+		{Key: "state", Value: string(models.VersionStateSubmitted)},
+	}
+	return database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
+}
+
 // RejectVolumeVersion marks a submitted version rejected, with an optional note. The record's
 // current-version pointer is unchanged.
 func RejectVolumeVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error {
@@ -376,6 +415,34 @@ func RejectVolumeVersion(c context.Context, id string, version int, reviewedBy s
 		{Key: "reviewed_at", Value: now},
 		{Key: "review_note", Value: reviewNote},
 	})
+}
+
+// RetractVolumeVersion lets the original submitter withdraw their own pending submission,
+// setting its state to withdrawn - see design.md's "Retract/pull-back need a `withdrawn` version
+// state". The record's current-version pointer is unchanged. Returns an error if the version
+// isn't submitted, or wasn't submitted by submitterID.
+func RetractVolumeVersion(c context.Context, id string, version int, submitterID string) (*vo.VolumeVersionVO, error) {
+	submitted, err := getVolumeVersion(c, id, version)
+	if err != nil {
+		return nil, err
+	}
+	if submitted == nil {
+		return nil, fmt.Errorf("volume %s: version %d not found", id, version)
+	}
+	if submitted.State != models.VersionStateSubmitted {
+		return nil, fmt.Errorf("volume %s: version %d is not submitted (state: %s)", id, version, submitted.State)
+	}
+	if submitted.SubmittedBy != submitterID {
+		return nil, fmt.Errorf("volume %s: version %d was not submitted by %s", id, version, submitterID)
+	}
+
+	if err := setVolumeVersionState(c, id, version, bson.D{
+		{Key: "state", Value: string(models.VersionStateWithdrawn)},
+	}); err != nil {
+		return nil, err
+	}
+	submitted.State = models.VersionStateWithdrawn
+	return volumeVersionModelToVO(c, submitted), nil
 }
 
 // SetCurrentVolumeVersion rolls a record back (or forward) to an arbitrary existing version,

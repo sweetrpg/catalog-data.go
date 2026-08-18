@@ -1,4 +1,12 @@
 
+## 0.7.0 - 2026-08-18
+
+### Added
+- Meta+version data access for publisher/studio/person/license/system
+- Add .DS_Store to gitignore
+
+
+
 ## 0.6.0 - 2026-08-14
 
 
