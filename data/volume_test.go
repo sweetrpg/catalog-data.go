@@ -102,6 +102,29 @@ func (suite *VolumeDataTestSuite) TestQueryVolumesProjected() {
 	assert.NotEmpty(suite.T(), volumes)
 }
 
+// TestQueryVolumesDefaultsToTitleSortSoEditingDoesNotEvictARecord reproduces a live-observed
+// bug: with no explicit sort, QueryVolumes used Mongo's natural (insertion) order, so editing a
+// volume - which inserts a new live version document rather than mutating one in place - moved
+// that volume to the back of natural order and could push it past a caller's page limit
+// entirely. A browse list must not reorder itself just because one record was edited.
+func (suite *VolumeDataTestSuite) TestQueryVolumesDefaultsToTitleSortSoEditingDoesNotEvictARecord() {
+	// "AAA Volume" sorts first alphabetically but is added and edited last, so it's the most
+	// recently inserted live version - the position natural order would put at the back.
+	for i := 0; i < 5; i++ {
+		_, err := AddVolume(suite.T().Context(), &vo.VolumeVO{Title: "Filler Volume"})
+		assert.NoError(suite.T(), err)
+	}
+	firstID, err := AddVolume(suite.T().Context(), &vo.VolumeVO{Title: "AAA Volume"})
+	assert.NoError(suite.T(), err)
+	_, err = UpdateVolume(suite.T().Context(), *firstID, &vo.VolumeVO{Title: "AAA Volume", Description: "edited"}, models.VersionStateLive)
+	assert.NoError(suite.T(), err)
+
+	volumes, err := QueryVolumes(suite.T().Context(), apiutil.QueryParams{Start: 0, Limit: 3})
+	assert.NoError(suite.T(), err)
+	assert.Len(suite.T(), volumes, 3)
+	assert.Equal(suite.T(), "AAA Volume", volumes[0].Title)
+}
+
 func (suite *VolumeDataTestSuite) TestQueryVolumesPaged() {
 	params := apiutil.QueryParams{
 		Limit: 10,
