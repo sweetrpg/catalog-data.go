@@ -46,7 +46,7 @@ func EnsurePublisherVersioningIndexes(c context.Context) error {
 func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersionVO {
 	return &vo.PublisherVersionVO{
 		ID: version.ID, RecordID: version.RecordID, Version: version.Version,
-		Name: version.Name, Address: version.Address, Website: version.Website, Notes: version.Notes,
+		Name: version.Name, Address: version.Address, Website: version.Website.String(), Notes: version.Notes,
 		Properties: modelcoreutil.FromPropertyModels(version.Properties),
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
 		VersionLifecycleVO: vo.VersionLifecycleVO{
@@ -60,7 +60,7 @@ func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersion
 
 func publisherVersionFields(publisher *vo.PublisherVO) models.PublisherVersion {
 	return models.PublisherVersion{
-		Name: publisher.Name, Address: publisher.Address, Website: publisher.Website, Notes: publisher.Notes,
+		Name: publisher.Name, Address: publisher.Address, Website: parseWebsite(publisher.Website), Notes: publisher.Notes,
 		Properties: modelcoreutil.ToPropertyModels(publisher.Properties),
 		Tags:       modelcoreutil.ToTagModels(publisher.Tags),
 	}
@@ -68,7 +68,7 @@ func publisherVersionFields(publisher *vo.PublisherVO) models.PublisherVersion {
 
 func flattenPublisher(meta *models.EntityMeta, version *models.PublisherVersion) *vo.PublisherVO {
 	return &vo.PublisherVO{
-		ID: meta.ID, Name: version.Name, Address: version.Address, Website: version.Website, Notes: version.Notes,
+		ID: meta.ID, Name: version.Name, Address: version.Address, Website: version.Website.String(), Notes: version.Notes,
 		Properties: modelcoreutil.FromPropertyModels(version.Properties),
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
 		AuditableVO: modelcorevo.AuditableVO{

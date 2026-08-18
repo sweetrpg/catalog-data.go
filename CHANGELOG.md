@@ -1,4 +1,11 @@
 
+## 0.8.1 - 2026-08-18
+
+### Fixed
+- Convert publisher/studio/license website to/from the new string VO field
+
+
+
 ## 0.8.0 - 2026-08-18
 
 ### Added

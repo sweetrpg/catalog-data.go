@@ -148,6 +148,20 @@ func (suite *PublisherDataTestSuite) TestSetCurrentPublisherVersion() {
 	assert.Equal(suite.T(), string(models.VersionStateLive), string(refetched.State))
 }
 
+func (suite *PublisherDataTestSuite) TestWebsiteRoundTripsAsPlainString() {
+	updated, err := UpdatePublisher(suite.T().Context(), suite.seedPublisherID, &vo.PublisherVO{
+		Name: "Test Publisher", Website: "https://example.com/kobold",
+	}, models.VersionStateLive)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), updated)
+	assert.Equal(suite.T(), "https://example.com/kobold", updated.Website)
+
+	fetched, err := GetPublisher(suite.T().Context(), suite.seedPublisherID)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), fetched)
+	assert.Equal(suite.T(), "https://example.com/kobold", fetched.Website)
+}
+
 func TestPublisherDbTestSuite(t *testing.T) {
 	suite.Run(t, new(PublisherDataTestSuite))
 }
