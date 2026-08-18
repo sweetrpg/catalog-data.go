@@ -1,4 +1,11 @@
 
+## 0.8.2 - 2026-08-18
+
+### Fixed
+- Default QueryVolumes to title sort so editing a volume can't evict it
+
+
+
 ## 0.8.1 - 2026-08-18
 
 ### Fixed
