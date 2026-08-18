@@ -331,6 +331,13 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+	if len(sort) == 0 {
+		// Without an explicit sort, Mongo returns natural (insertion) order - stable for an
+		// untouched record, but an edit re-inserts that record's new live version, so it jumps
+		// to the back of natural order and can fall outside a caller's default page size. A
+		// browse list shouldn't reorder itself just because one record was edited.
+		sort = bson.D{{Key: "title", Value: 1}}
+	}
 	logging.Logger.Debug("query volumes", "filter", filter, "sort", sort, "projection", projection)
 
 	versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sort, projection, params.Start, params.Limit)
