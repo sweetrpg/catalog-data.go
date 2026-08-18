@@ -71,7 +71,7 @@
 				
 				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_versioning.go (0.0%)</option>
 				
-				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (65.3%)</option>
+				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (65.8%)</option>
 				
 				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
 				
@@ -2006,7 +2006,7 @@ import (
 )
 
 // AddVolume creates a volume's meta record and its first (live) version.
-func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov6" title="27">{
+func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov7" title="34">{
         logging.Logger.Info("AddVolume", "c", c, "volume", volume)
 
         _, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
@@ -2025,7 +2025,7 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
                 return nil, err
         }</span>
 
-        <span class="cov6" title="27">version := volumeVOToVersionFields(volume)
+        <span class="cov7" title="34">version := volumeVOToVersionFields(volume)
         version.ID = primitive.NewObjectID().Hex()
         version.RecordID = metaID
         version.Version = 1
@@ -2038,14 +2038,14 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
                 return nil, err
         }</span>
 
-        <span class="cov6" title="27">return &amp;metaID, nil</span>
+        <span class="cov7" title="34">return &amp;metaID, nil</span>
 }
 
 // UpdateVolume creates a new version of the volume rather than mutating the record in place.
 // For state VersionStateLive, the new version becomes current immediately and the previously
 // current version is archived; any other state (VersionStateSubmitted) leaves the current
 // pointer untouched. Returns the created version, or nil if the record doesn't exist.
-func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState) (*vo.VolumeVersionVO, error) <span class="cov5" title="14">{
+func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState) (*vo.VolumeVersionVO, error) <span class="cov5" title="15">{
         logging.Logger.Info("UpdateVolume", "c", c, "id", id, "volume", volume, "state", state)
 
         _, span := otel.Tracer("volume").Start(c, "db-update-volume", oteltrace.WithAttributes(attribute.String("id", id)))
@@ -2071,23 +2071,23 @@ func CreateSubmittedVolumeVersionWithStagedAssets(c context.Context, id string, 
         return createVolumeVersion(c, id, volume, models.VersionStateSubmitted, submittedBy, time.Now(), stagedCoverAssetId, stagedSampleAssetIds)
 }</span>
 
-func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState, submittedBy string, submittedAt time.Time, stagedCoverAssetId *string, stagedSampleAssetIds []string) (*vo.VolumeVersionVO, error) <span class="cov5" title="15">{
+func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState, submittedBy string, submittedAt time.Time, stagedCoverAssetId *string, stagedSampleAssetIds []string) (*vo.VolumeVersionVO, error) <span class="cov5" title="16">{
         meta, err := getVolumeMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 logging.Logger.Error("Error while looking up VolumeMeta for update", "id", id, "error", err)
                 return nil, err
         }</span>
-        <span class="cov5" title="15">if meta == nil </span><span class="cov1" title="1">{
+        <span class="cov5" title="16">if meta == nil </span><span class="cov1" title="1">{
                 logging.Logger.Info(fmt.Sprintf("Volume not found for update, ID: %s", id))
                 return nil, nil
         }</span>
 
-        <span class="cov5" title="14">nextVersion, err := nextVolumeVersionNumber(c, id)
+        <span class="cov5" title="15">nextVersion, err := nextVolumeVersionNumber(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
 
-        <span class="cov5" title="14">baseVersion := meta.CurrentVersion
+        <span class="cov5" title="15">baseVersion := meta.CurrentVersion
         newVersion := volumeVOToVersionFields(volume)
         newVersion.ID = primitive.NewObjectID().Hex()
         newVersion.RecordID = id
@@ -2104,16 +2104,16 @@ func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, stat
                 return nil, err
         }</span>
 
-        <span class="cov5" title="14">if state == models.VersionStateLive </span><span class="cov4" title="8">{
+        <span class="cov5" title="15">if state == models.VersionStateLive </span><span class="cov4" title="9">{
                 if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
-                <span class="cov4" title="8">if err := setVolumeMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
+                <span class="cov4" title="9">if err := setVolumeMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
         }
 
-        <span class="cov5" title="14">return volumeVersionModelToVO(c, &amp;newVersion), nil</span>
+        <span class="cov5" title="15">return volumeVersionModelToVO(c, &amp;newVersion), nil</span>
 }
 
 func DeleteVolume(c context.Context, id string) error <span class="cov0" title="0">{
@@ -2160,19 +2160,19 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="
 // counterpart to the *ByIDs functions below, which resolve IDs back into VOs. Both directions
 // live here rather than using util.Map (which always dereferences into a value slice) since
 // VolumeVO's relationship fields are pointer slices - see that struct's own doc comment for why.
-func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="164">{
+func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="196">{
         ids := make([]string, 0, len(relations))
         for _, r := range relations </span><span class="cov1" title="1">{
                 if r != nil </span><span class="cov1" title="1">{
                         ids = append(ids, id(r))
                 }</span>
         }
-        <span class="cov10" title="164">return ids</span>
+        <span class="cov10" title="196">return ids</span>
 }
 
 func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioIds, licenseIds []string) (
         systems []*vo.SystemVO, publishers []*vo.PublisherVO, studios []*vo.StudioVO, licenses []*vo.LicenseVO,
-) <span class="cov8" title="93">{
+) <span class="cov8" title="97">{
         systems = make([]*vo.SystemVO, 0, len(systemIds))
         for _, id := range systemIds </span><span class="cov0" title="0">{
                 system, err := GetSystem(c, id)
@@ -2184,7 +2184,7 @@ func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioId
                         systems = append(systems, system)
                 }</span>
         }
-        <span class="cov8" title="93">publishers = make([]*vo.PublisherVO, 0, len(publisherIds))
+        <span class="cov8" title="97">publishers = make([]*vo.PublisherVO, 0, len(publisherIds))
         for _, id := range publisherIds </span><span class="cov2" title="2">{
                 publisher, err := GetPublisher(c, id)
                 if err != nil </span><span class="cov0" title="0">{
@@ -2195,7 +2195,7 @@ func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioId
                         publishers = append(publishers, publisher)
                 }</span>
         }
-        <span class="cov8" title="93">studios = make([]*vo.StudioVO, 0, len(studioIds))
+        <span class="cov8" title="97">studios = make([]*vo.StudioVO, 0, len(studioIds))
         for _, id := range studioIds </span><span class="cov0" title="0">{
                 studio, err := GetStudio(c, id)
                 if err != nil </span><span class="cov0" title="0">{
@@ -2206,7 +2206,7 @@ func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioId
                         studios = append(studios, studio)
                 }</span>
         }
-        <span class="cov8" title="93">licenses = make([]*vo.LicenseVO, 0, len(licenseIds))
+        <span class="cov8" title="97">licenses = make([]*vo.LicenseVO, 0, len(licenseIds))
         for _, id := range licenseIds </span><span class="cov0" title="0">{
                 license, err := GetLicense(c, id)
                 if err != nil </span><span class="cov0" title="0">{
@@ -2217,13 +2217,13 @@ func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioId
                         licenses = append(licenses, license)
                 }</span>
         }
-        <span class="cov8" title="93">return</span>
+        <span class="cov8" title="97">return</span>
 }
 
 // flattenVolume merges a meta record with its current version into the pre-versioning VolumeVO
 // shape: creation/deletion audit comes from meta, the "last updated" audit comes from the
 // version's own submission audit (its most recent live edit).
-func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO <span class="cov8" title="65">{
+func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO <span class="cov8" title="68">{
         systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds)
 
         return &amp;vo.VolumeVO{
@@ -2253,7 +2253,7 @@ func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.V
 
 // volumeVersionModelToVO converts a version record on its own (no meta) into the version-history
 // API shape, resolving its relationship IDs the same way a flattened read does.
-func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *vo.VolumeVersionVO <span class="cov6" title="28">{
+func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *vo.VolumeVersionVO <span class="cov6" title="29">{
         systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds)
 
         return &amp;vo.VolumeVersionVO{
@@ -2288,7 +2288,7 @@ func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *v
 // volumeVOToVersionFields maps a request VolumeVO's substantive fields onto a new
 // models.VolumeVersion - the caller fills in the version-lifecycle fields (ID, RecordID,
 // Version, State, BaseVersion, SubmittedBy/At).
-func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion <span class="cov7" title="41">{
+func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion <span class="cov7" title="49">{
         return models.VolumeVersion{
                 Title:          volume.Title,
                 Description:    volume.Description,
@@ -2308,7 +2308,7 @@ func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion <span cla
 // QueryVolumes lists the current (live) version of every volume matching params - the live
 // version's data is exactly today's flat volume shape, since exactly one version per record is
 // ever live at a time.
-func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) <span class="cov3" title="5">{
+func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) <span class="cov4" title="6">{
         logging.Logger.Info("QueryVolumes", "c", c, "params", params)
 
         span := tracing.BuildSpanWithParams(c, "volumes", "db-get-volumes", params)
@@ -2316,7 +2316,14 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 
         filter, sort, projection := apiutil.ConvertQueryParams(params)
         filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
-        logging.Logger.Debug("query volumes", "filter", filter, "sort", sort, "projection", projection)
+        if len(sort) == 0 </span><span class="cov3" title="5">{
+                // Without an explicit sort, Mongo returns natural (insertion) order - stable for an
+                // untouched record, but an edit re-inserts that record's new live version, so it jumps
+                // to the back of natural order and can fall outside a caller's default page size. A
+                // browse list shouldn't reorder itself just because one record was edited.
+                sort = bson.D{{Key: "title", Value: 1}}
+        }</span>
+        <span class="cov4" title="6">logging.Logger.Debug("query volumes", "filter", filter, "sort", sort, "projection", projection)
 
         versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sort, projection, params.Start, params.Limit)
         if err != nil </span><span class="cov0" title="0">{
@@ -2324,21 +2331,21 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
                 return nil, err
         }</span>
 
-        <span class="cov3" title="5">vos := make([]*vo.VolumeVO, 0, len(versions))
-        for _, version := range versions </span><span class="cov7" title="50">{
+        <span class="cov4" title="6">vos := make([]*vo.VolumeVO, 0, len(versions))
+        for _, version := range versions </span><span class="cov7" title="53">{
                 meta, err := getVolumeMeta(c, version.RecordID)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No VolumeMeta found for VolumeVersion record %s: %s", version.RecordID, err.Error()))
                         continue</span>
                 }
-                <span class="cov7" title="50">if meta == nil </span><span class="cov0" title="0">{
+                <span class="cov7" title="53">if meta == nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No VolumeMeta found for VolumeVersion record %s", version.RecordID))
                         continue</span>
                 }
-                <span class="cov7" title="50">vos = append(vos, flattenVolume(c, meta, version))</span>
+                <span class="cov7" title="53">vos = append(vos, flattenVolume(c, meta, version))</span>
         }
 
-        <span class="cov3" title="5">logging.Logger.Debug("returning volume value objects", "vos", vos)
+        <span class="cov4" title="6">logging.Logger.Debug("returning volume value objects", "vos", vos)
         return vos, nil</span>
 }
 </pre>
@@ -2450,7 +2457,7 @@ const (
 // EnsureVolumeVersioningIndexes creates the indexes volume version queries rely on: a unique
 // (record_id, version) index so a version number can never be reused for a record, and a
 // (record_id, state) index for the pending-submission lookup. Safe to call on every startup.
-func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7" title="28">{
+func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7" title="29">{
         _, err := database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
                 Keys:    bson.D{{Key: "record_id", Value: 1}, {Key: "version", Value: 1}},
                 Options: options.Index().SetUnique(true),
@@ -2459,25 +2466,25 @@ func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7"
                 return fmt.Errorf("volumes: create record_id+version index: %w", err)
         }</span>
 
-        <span class="cov7" title="28">_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+        <span class="cov7" title="29">_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
                 Keys: bson.D{{Key: "record_id", Value: 1}, {Key: "state", Value: 1}},
         })
         if err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("volumes: create record_id+state index: %w", err)
         }</span>
 
-        <span class="cov7" title="28">return nil</span>
+        <span class="cov7" title="29">return nil</span>
 }
 
-func getVolumeMeta(c context.Context, id string) (*models.VolumeMeta, error) <span class="cov10" title="90">{
+func getVolumeMeta(c context.Context, id string) (*models.VolumeMeta, error) <span class="cov10" title="94">{
         results, err := database.Query[models.VolumeMeta](volumeMetaCollection, bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov10" title="90">if len(results) == 0 </span><span class="cov3" title="4">{
+        <span class="cov10" title="94">if len(results) == 0 </span><span class="cov3" title="4">{
                 return nil, nil
         }</span>
-        <span class="cov9" title="86">return results[0], nil</span>
+        <span class="cov9" title="90">return results[0], nil</span>
 }
 
 func getVolumeVersion(c context.Context, recordID string, version int) (*models.VolumeVersion, error) <span class="cov7" title="31">{
@@ -2492,30 +2499,30 @@ func getVolumeVersion(c context.Context, recordID string, version int) (*models.
         <span class="cov7" title="30">return results[0], nil</span>
 }
 
-func nextVolumeVersionNumber(c context.Context, recordID string) (int, error) <span class="cov6" title="16">{
+func nextVolumeVersionNumber(c context.Context, recordID string) (int, error) <span class="cov6" title="17">{
         filter := bson.D{{Key: "record_id", Value: recordID}}
         sortOrder := bson.D{{Key: "version", Value: -1}}
         results, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sortOrder, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return 0, err
         }</span>
-        <span class="cov6" title="16">if len(results) == 0 </span><span class="cov0" title="0">{
+        <span class="cov6" title="17">if len(results) == 0 </span><span class="cov0" title="0">{
                 return 1, nil
         }</span>
-        <span class="cov6" title="16">return results[0].Version + 1, nil</span>
+        <span class="cov6" title="17">return results[0].Version + 1, nil</span>
 }
 
-func setVolumeVersionState(c context.Context, recordID string, version int, fields bson.D) error <span class="cov6" title="17">{
+func setVolumeVersionState(c context.Context, recordID string, version int, fields bson.D) error <span class="cov6" title="18">{
         filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
         _, err := database.Db.Collection(volumeVersionCollection).UpdateOne(c, filter, bson.D{{Key: "$set", Value: fields}})
         return err
 }</span>
 
-func archiveVolumeVersion(c context.Context, recordID string, version int) error <span class="cov5" title="12">{
+func archiveVolumeVersion(c context.Context, recordID string, version int) error <span class="cov6" title="13">{
         return setVolumeVersionState(c, recordID, version, bson.D{{Key: "state", Value: string(models.VersionStateArchived)}})
 }</span>
 
-func setVolumeMetaCurrentVersion(c context.Context, recordID string, version int) error <span class="cov5" title="12">{
+func setVolumeMetaCurrentVersion(c context.Context, recordID string, version int) error <span class="cov6" title="13">{
         _, err := database.Db.Collection(volumeMetaCollection).UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: recordID}},
@@ -2561,7 +2568,7 @@ var volumeVersionSubstantiveFields = []string{
         "system_ids", "publisher_ids", "studio_ids", "license_ids", "properties", "tags",
 }
 
-func volumeVersionFieldValue(v *models.VolumeVersion, field string) any <span class="cov9" title="56">{
+func volumeVersionFieldValue(v *models.VolumeVersion, field string) any <span class="cov8" title="56">{
         switch field </span>{
         case "title":<span class="cov5" title="10">
                 return v.Title</span>
