@@ -394,6 +394,41 @@ func CountSubmittedVolumeVersionsBySubmitter(c context.Context, submittedBy stri
 	return database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
 }
 
+// PendingStagedAssetIds is the set of staged cover/sample asset ids currently referenced by a
+// pending (state: submitted) volume version - used by assets-web's reclaim job to avoid
+// deleting a staged file a pending submission still needs.
+type PendingStagedAssetIds struct {
+	CoverAssetIds  []string `json:"coverAssetIds"`
+	SampleAssetIds []string `json:"sampleAssetIds"`
+}
+
+// ListPendingStagedAssetIds scans every submitted volume version for a staged cover/sample
+// reference. Cheap at current data volumes (small pending-submission counts, matching the
+// platform's existing "no new index/search endpoint needed yet" precedent for similarly-sized
+// collections) - a full collection scan, not a lookup by id, since the reclaim job needs the
+// whole referenced set each run.
+func ListPendingStagedAssetIds(c context.Context) (*PendingStagedAssetIds, error) {
+	filter := bson.D{{Key: "state", Value: string(models.VersionStateSubmitted)}}
+	projection := bson.D{
+		{Key: "staged_cover_asset_id", Value: 1},
+		{Key: "staged_sample_asset_ids", Value: 1},
+	}
+	versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, projection, 0, 0)
+	if err != nil {
+		logging.Logger.Error(fmt.Sprintf("Error while querying database for pending staged asset ids: %+v", err))
+		return nil, err
+	}
+
+	result := &PendingStagedAssetIds{CoverAssetIds: []string{}, SampleAssetIds: []string{}}
+	for _, version := range versions {
+		if version.StagedCoverAssetId != nil && *version.StagedCoverAssetId != "" {
+			result.CoverAssetIds = append(result.CoverAssetIds, *version.StagedCoverAssetId)
+		}
+		result.SampleAssetIds = append(result.SampleAssetIds, version.StagedSampleAssetIds...)
+	}
+	return result, nil
+}
+
 // RejectVolumeVersion marks a submitted version rejected, with an optional note. The record's
 // current-version pointer is unchanged.
 func RejectVolumeVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error {
