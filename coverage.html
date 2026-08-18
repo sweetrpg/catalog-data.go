@@ -57,23 +57,25 @@
 				
 				<option value="file0">github.com/sweetrpg/catalog-data.go/data/contribution.go (60.4%)</option>
 				
-				<option value="file1">github.com/sweetrpg/catalog-data.go/data/license.go (52.1%)</option>
+				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (56.5%)</option>
 				
-				<option value="file2">github.com/sweetrpg/catalog-data.go/data/person.go (52.1%)</option>
+				<option value="file2">github.com/sweetrpg/catalog-data.go/data/license_versioning.go (26.3%)</option>
 				
-				<option value="file3">github.com/sweetrpg/catalog-data.go/data/publisher.go (52.1%)</option>
+				<option value="file3">github.com/sweetrpg/catalog-data.go/data/person_versioning.go (30.9%)</option>
 				
-				<option value="file4">github.com/sweetrpg/catalog-data.go/data/review.go (0.0%)</option>
+				<option value="file4">github.com/sweetrpg/catalog-data.go/data/publisher_versioning.go (57.6%)</option>
 				
-				<option value="file5">github.com/sweetrpg/catalog-data.go/data/studio.go (52.1%)</option>
+				<option value="file5">github.com/sweetrpg/catalog-data.go/data/review.go (0.0%)</option>
 				
-				<option value="file6">github.com/sweetrpg/catalog-data.go/data/system.go (0.0%)</option>
+				<option value="file6">github.com/sweetrpg/catalog-data.go/data/studio_versioning.go (30.1%)</option>
 				
-				<option value="file7">github.com/sweetrpg/catalog-data.go/data/volume.go (65.3%)</option>
+				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_versioning.go (0.0%)</option>
 				
-				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
+				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (65.3%)</option>
 				
-				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (73.8%)</option>
+				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
+				
+				<option value="file10">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (68.0%)</option>
 				
 				</select>
 			</div>
@@ -255,148 +257,513 @@ func DeleteContribution(c context.Context, id string) (bool, error) <span class=
 import (
         "context"
         "fmt"
+        "reflect"
+        "sort"
         "time"
 
-        "github.com/sweetrpg/api-core.go/tracing"
-        apiutil "github.com/sweetrpg/api-core.go/util"
         "github.com/sweetrpg/catalog-objects.go/models"
-        "github.com/sweetrpg/catalog-objects.go/vo"
-        "github.com/sweetrpg/common.go/logging"
         modelcore "github.com/sweetrpg/model-core.go/models"
-        modelcoreutil "github.com/sweetrpg/model-core.go/util"
-        modelcorevo "github.com/sweetrpg/model-core.go/vo"
         "github.com/sweetrpg/mongodb.go/database"
         "go.mongodb.org/mongo-driver/bson"
-        "go.opentelemetry.io/otel"
-        "go.opentelemetry.io/otel/attribute"
-        oteltrace "go.opentelemetry.io/otel/trace"
+        "go.mongodb.org/mongo-driver/bson/primitive"
+        "go.mongodb.org/mongo-driver/mongo"
+        "go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) <span class="cov10" title="4">{
-        _, span := otel.Tracer("license").Start(c, "db-get-license", oteltrace.WithAttributes(attribute.String("id", id)))
-        results, err := database.Query[models.License]("licenses", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
-        span.End()
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for License: %v", err))
-                return nil, err
-        }</span>
-
-        <span class="cov10" title="4">if len(results) == 0 </span><span class="cov1" title="1">{
-                logging.Logger.Info(fmt.Sprintf("License not found for ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov8" title="3">return licenseModelToVO(results[0]), nil</span>
+// entityFieldAccessor reads/writes one substantive field on a version record - the version-model
+// counterpart of server/entity_patch.go's entityFieldAccessor, used here for the accept-selected
+// diff/apply logic instead of a live-record patch.
+type entityFieldAccessor[T any] struct {
+        get func(*T) any
+        set func(*T, any)
 }
 
-func licenseModelToVO(model *models.License) *vo.LicenseVO <span class="cov8" title="3">{
-        return &amp;vo.LicenseVO{
-                ID:           model.ID,
-                Title:        model.Title,
-                ShortTitle:   model.ShortTitle,
-                Version:      model.Version,
-                Deed:         model.Deed,
-                LegalCode:    model.LegalCode,
-                Website:      model.Website,
-                Status:       model.Status,
-                Availability: model.Availability,
-                Notes:        model.Notes,
-                Properties:   modelcoreutil.FromPropertyModels(model.Properties),
-                Tags:         modelcoreutil.FromTagModels(model.Tags),
-                AuditableVO: modelcorevo.AuditableVO{
-                        CreatedAt: model.CreatedAt,
-                        CreatedBy: model.CreatedBy,
-                        UpdatedAt: model.UpdatedAt,
-                        UpdatedBy: model.UpdatedBy,
-                        DeletedAt: model.DeletedAt,
-                        DeletedBy: model.DeletedBy,
-                },
-        }
+// entityVersioningConfig wires the generic meta+version engine below (shared across publisher,
+// studio, person, license, and system - the same meta-record+version-record model volume.go/
+// volume_versioning.go implement bespoke, predating this shared type) to one entity type's
+// collections and field accessors. See design.md's "share a generic version-store engine"
+// decision - this avoids reimplementing the version lifecycle five times. Volume itself is not
+// migrated onto this engine - its bespoke implementation is already shipped and tested, and it
+// alone needs staged-asset handling this generic engine doesn't support.
+type entityVersioningConfig[T any] struct {
+        metaCollection    string
+        versionCollection string
+        typeName          string // for error messages, e.g. "publisher"
+        lifecycle         func(*T) *models.VersionLifecycle
+        setID             func(*T, string)
+        setRecordID       func(*T, string)
+        setVersion        func(*T, int)
+        // fields are the substantive fields a submission can change and a review can selectively
+        // accept - everything on T except its version-lifecycle bookkeeping.
+        fields map[string]entityFieldAccessor[T]
+}
+
+func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <span class="cov8" title="19">{
+        _, err := database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
+                Keys:    bson.D{{Key: "record_id", Value: 1}, {Key: "version", Value: 1}},
+                Options: options.Index().SetUnique(true),
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("%s: create record_id+version index: %w", cfg.typeName, err)
+        }</span>
+        <span class="cov8" title="19">_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
+                Keys: bson.D{{Key: "record_id", Value: 1}, {Key: "state", Value: 1}},
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("%s: create record_id+state index: %w", cfg.typeName, err)
+        }</span>
+        <span class="cov8" title="19">return nil</span>
+}
+
+func (cfg entityVersioningConfig[T]) getMeta(c context.Context, id string) (*models.EntityMeta, error) <span class="cov10" title="44">{
+        results, err := database.Query[models.EntityMeta](cfg.metaCollection, bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov10" title="44">if len(results) == 0 </span><span class="cov5" title="6">{
+                return nil, nil
+        }</span>
+        <span class="cov9" title="38">return results[0], nil</span>
+}
+
+func (cfg entityVersioningConfig[T]) getVersion(c context.Context, recordID string, version int) (*T, error) <span class="cov9" title="33">{
+        filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
+        results, err := database.Query[T](cfg.versionCollection, filter, nil, nil, 0, 1)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov9" title="33">if len(results) == 0 </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov9" title="33">return results[0], nil</span>
+}
+
+func (cfg entityVersioningConfig[T]) setVersionState(c context.Context, recordID string, version int, fields bson.D) error <span class="cov7" title="17">{
+        filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
+        _, err := database.Db.Collection(cfg.versionCollection).UpdateOne(c, filter, bson.D{{Key: "$set", Value: fields}})
+        return err
 }</span>
 
-// UpdateLicense merges the provided fields into the existing license and writes it, mirroring
-// UpdatePublisher's raw-marshal $set approach.
-func UpdateLicense(c context.Context, id string, license *vo.LicenseVO) (*vo.LicenseVO, error) <span class="cov5" title="2">{
-        _, span := otel.Tracer("license").Start(c, "db-update-license", oteltrace.WithAttributes(attribute.String("id", id)))
-        defer span.End()
+func (cfg entityVersioningConfig[T]) archiveVersion(c context.Context, recordID string, version int) error <span class="cov6" title="10">{
+        return cfg.setVersionState(c, recordID, version, bson.D{{Key: "state", Value: string(models.VersionStateArchived)}})
+}</span>
 
-        existing, err := GetLicense(c, id)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while looking up existing License for update", "id", id, "error", err)
-                return nil, err
-        }</span>
-        <span class="cov5" title="2">if existing == nil </span><span class="cov1" title="1">{
-                logging.Logger.Info(fmt.Sprintf("License not found for update, ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov1" title="1">model := models.License{
-                ID:           id,
-                Title:        license.Title,
-                ShortTitle:   license.ShortTitle,
-                Version:      license.Version,
-                Deed:         license.Deed,
-                LegalCode:    license.LegalCode,
-                Website:      license.Website,
-                Status:       license.Status,
-                Availability: license.Availability,
-                Notes:        license.Notes,
-                Properties:   modelcoreutil.ToPropertyModels(license.Properties),
-                Tags:         modelcoreutil.ToTagModels(license.Tags),
-                Auditable: modelcore.Auditable{
-                        CreatedAt: existing.CreatedAt,
-                        CreatedBy: existing.CreatedBy,
-                        UpdatedAt: time.Now(),
-                        UpdatedBy: license.UpdatedBy,
-                        DeletedAt: nil,
-                        DeletedBy: nil,
-                },
-        }
-
-        data, err := bson.Marshal(model)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while preparing License document for update", "error", err)
-                return nil, err
-        }</span>
-        <span class="cov1" title="1">var update bson.D
-        if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while unmarshaling License document for update", "error", err)
-                return nil, err
-        }</span>
-
-        <span class="cov1" title="1">result, err := database.Db.Collection("licenses").UpdateOne(
+func (cfg entityVersioningConfig[T]) setMetaCurrentVersion(c context.Context, recordID string, version int) error <span class="cov6" title="10">{
+        _, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
                 c,
-                bson.D{{Key: "_id", Value: id}},
-                bson.D{{Key: "$set", Value: update}},
+                bson.D{{Key: "_id", Value: recordID}},
+                bson.D{{Key: "$set", Value: bson.D{{Key: "current_version", Value: version}}}},
         )
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while updating License in database", "id", id, "error", err)
-                return nil, err
-        }</span>
-        <span class="cov1" title="1">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
-                logging.Logger.Info(fmt.Sprintf("License not found for update, ID: %s", id))
-                return nil, nil
-        }</span>
+        return err
+}</span>
 
-        <span class="cov1" title="1">return GetLicense(c, id)</span>
+// listVersions returns every version of a record, newest first.
+func (cfg entityVersioningConfig[T]) listVersions(c context.Context, id string) ([]*T, error) <span class="cov1" title="1">{
+        filter := bson.D{{Key: "record_id", Value: id}}
+        sortOrder := bson.D{{Key: "version", Value: -1}}
+        return database.Query[T](cfg.versionCollection, filter, sortOrder, nil, 0, 0)
+}</span>
+
+func (cfg entityVersioningConfig[T]) fieldValue(v *T, field string) any <span class="cov0" title="0">{
+        accessor, ok := cfg.fields[field]
+        if !ok </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+        <span class="cov0" title="0">return accessor.get(v)</span>
 }
 
-func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) <span class="cov0" title="0">{
-        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
-        filter, sort, projection := apiutil.ConvertQueryParams(params)
-        models, err := database.Query[models.License]("licenses", filter, sort, projection, params.Start, params.Limit)
-        span.End()
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for Licenses: %v", err))
+func (cfg entityVersioningConfig[T]) setFieldValue(v *T, field string, value any) <span class="cov0" title="0">{
+        if accessor, ok := cfg.fields[field]; ok </span><span class="cov0" title="0">{
+                accessor.set(v, value)
+        }</span>
+}
+
+func (cfg entityVersioningConfig[T]) changedFields(submitted, base *T) []string <span class="cov0" title="0">{
+        var changed []string
+        for field := range cfg.fields </span><span class="cov0" title="0">{
+                if !reflect.DeepEqual(cfg.fieldValue(submitted, field), cfg.fieldValue(base, field)) </span><span class="cov0" title="0">{
+                        changed = append(changed, field)
+                }</span>
+        }
+        <span class="cov0" title="0">sort.Strings(changed)
+        return changed</span>
+}
+
+// addEntity creates a record's meta record and its first (live) version. entity must already
+// carry its substantive field values; addEntity sets id/record_id/version/lifecycle fields.
+func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, createdBy string) (*string, error) <span class="cov8" title="20">{
+        now := time.Now()
+        metaID := primitive.NewObjectID().Hex()
+        meta := models.EntityMeta{ID: metaID, CurrentVersion: 1, CreatedAt: now, CreatedBy: createdBy}
+        if _, err := database.Insert[models.EntityMeta](cfg.metaCollection, meta); err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
 
-        <span class="cov0" title="0">vos := make([]*vo.LicenseVO, 0, len(models))
-        for _, model := range models </span><span class="cov0" title="0">{
-                vos = append(vos, licenseModelToVO(model))
+        <span class="cov8" title="20">cfg.setID(entity, primitive.NewObjectID().Hex())
+        cfg.setRecordID(entity, metaID)
+        cfg.setVersion(entity, 1)
+        lc := cfg.lifecycle(entity)
+        lc.State = models.VersionStateLive
+        lc.BaseVersion = nil
+        lc.SubmittedBy = createdBy
+        lc.SubmittedAt = now
+
+        if _, err := database.Insert[T](cfg.versionCollection, *entity); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="20">return &amp;metaID, nil</span>
+}
+
+// createVersion creates a new version for an existing record - editor/admin: state Live, goes
+// current immediately and archives the previous current version; submitter: state Submitted,
+// current pointer untouched. entity must already carry its desired substantive field values.
+func (cfg entityVersioningConfig[T]) createVersion(c context.Context, id string, entity *T, state models.VersionState, submittedBy string) (*T, error) <span class="cov7" title="16">{
+        return cfg.createVersionWithSubmission(c, id, entity, state, submittedBy, time.Now())
+}</span>
+
+// createVersionWithSubmission is createVersion with a caller-supplied submittedAt instead of
+// always stamping "now" - used by migration, which preserves a migrated proposal's original
+// submission time rather than the time of the migration run itself.
+func (cfg entityVersioningConfig[T]) createVersionWithSubmission(c context.Context, id string, entity *T, state models.VersionState, submittedBy string, submittedAt time.Time) (*T, error) <span class="cov7" title="17">{
+        meta, err := cfg.getMeta(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov7" title="17">if meta == nil </span><span class="cov4" title="4">{
+                return nil, nil
         }</span>
 
-        <span class="cov0" title="0">return vos, nil</span>
+        <span class="cov7" title="13">nextVersion, err := cfg.nextVersionNumber(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov7" title="13">baseVersion := meta.CurrentVersion
+        cfg.setID(entity, primitive.NewObjectID().Hex())
+        cfg.setRecordID(entity, id)
+        cfg.setVersion(entity, nextVersion)
+        lc := cfg.lifecycle(entity)
+        lc.State = state
+        lc.BaseVersion = &amp;baseVersion
+        lc.SubmittedBy = submittedBy
+        lc.SubmittedAt = submittedAt
+
+        if _, err := database.Insert[T](cfg.versionCollection, *entity); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov7" title="13">if state == models.VersionStateLive </span><span class="cov4" title="5">{
+                if err := cfg.archiveVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov4" title="5">if err := cfg.setMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+        }
+
+        <span class="cov7" title="13">return entity, nil</span>
+}
+
+// nextVersionNumber returns the next sequential version number for a record - 1 if it has none yet.
+func (cfg entityVersioningConfig[T]) nextVersionNumber(c context.Context, recordID string) (int, error) <span class="cov7" title="13">{
+        filter := bson.D{{Key: "record_id", Value: recordID}}
+        sortOrder := bson.D{{Key: "version", Value: -1}}
+        results, err := database.Query[T](cfg.versionCollection, filter, sortOrder, nil, 0, 1)
+        if err != nil </span><span class="cov0" title="0">{
+                return 0, err
+        }</span>
+        <span class="cov7" title="13">if len(results) == 0 </span><span class="cov0" title="0">{
+                return 1, nil
+        }</span>
+        <span class="cov7" title="13">return cfg.versionOf(results[0]) + 1, nil</span>
+}
+
+func (cfg entityVersioningConfig[T]) versionOf(v *T) int <span class="cov7" title="13">{
+        // Version is always the second config-set field; read it back via the fields the caller
+        // already exposed through setVersion's counterpart is unnecessary - version numbers are
+        // looked up via the raw bson document's own "version" key by the query filter/sort, so a
+        // dedicated getter is simplest here.
+        rv := reflect.ValueOf(v).Elem().FieldByName("Version")
+        return int(rv.Int())
+}</span>
+
+// acceptVersion reviews a submitted version - see AcceptVolumeVersion's doc comment for the full
+// accept-all/accept-selected/conflict semantics this mirrors exactly, minus staged-asset handling.
+func (cfg entityVersioningConfig[T]) acceptVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string) (*T, []string, error) <span class="cov4" title="4">{
+        submitted, err := cfg.getVersion(c, id, version)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov4" title="4">if submitted == nil </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("%s %s: version %d not found", cfg.typeName, id, version)
+        }</span>
+        <span class="cov4" title="4">submittedLC := cfg.lifecycle(submitted)
+        if submittedLC.State != models.VersionStateSubmitted </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("%s %s: version %d is not submitted (state: %s)", cfg.typeName, id, version, submittedLC.State)
+        }</span>
+        <span class="cov4" title="4">if submittedLC.BaseVersion == nil </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("%s %s: version %d has no base version to review against", cfg.typeName, id, version)
+        }</span>
+
+        <span class="cov4" title="4">meta, err := cfg.getMeta(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov4" title="4">if meta == nil </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("%s %s: meta record not found", cfg.typeName, id)
+        }</span>
+
+        <span class="cov4" title="4">current, err := cfg.getVersion(c, id, meta.CurrentVersion)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov4" title="4">if current == nil </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("%s %s: current version %d not found", cfg.typeName, id, meta.CurrentVersion)
+        }</span>
+
+        <span class="cov4" title="4">now := time.Now()
+
+        if selectedFields == nil &amp;&amp; *submittedLC.BaseVersion == meta.CurrentVersion </span><span class="cov4" title="4">{
+                if err := cfg.archiveVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
+                        return nil, nil, err
+                }</span>
+                <span class="cov4" title="4">submittedLC.State = models.VersionStateLive
+                submittedLC.ReviewedBy = &amp;reviewedBy
+                submittedLC.ReviewedAt = &amp;now
+                submittedLC.ReviewNote = reviewNote
+                if err := cfg.setVersionState(c, id, version, bson.D{
+                        {Key: "state", Value: string(models.VersionStateLive)},
+                        {Key: "reviewed_by", Value: reviewedBy},
+                        {Key: "reviewed_at", Value: now},
+                        {Key: "review_note", Value: reviewNote},
+                }); err != nil </span><span class="cov0" title="0">{
+                        return nil, nil, err
+                }</span>
+                <span class="cov4" title="4">if err := cfg.setMetaCurrentVersion(c, id, version); err != nil </span><span class="cov0" title="0">{
+                        return nil, nil, err
+                }</span>
+                <span class="cov4" title="4">return submitted, nil, nil</span>
+        }
+
+        <span class="cov0" title="0">baseVersion, err := cfg.getVersion(c, id, *submittedLC.BaseVersion)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov0" title="0">if baseVersion == nil </span><span class="cov0" title="0">{
+                return nil, nil, fmt.Errorf("%s %s: base version %d not found", cfg.typeName, id, *submittedLC.BaseVersion)
+        }</span>
+
+        <span class="cov0" title="0">changed := cfg.changedFields(submitted, baseVersion)
+        target := changed
+        if selectedFields != nil </span><span class="cov0" title="0">{
+                selectedSet := make(map[string]bool, len(selectedFields))
+                for _, f := range selectedFields </span><span class="cov0" title="0">{
+                        selectedSet[f] = true
+                }</span>
+                <span class="cov0" title="0">var filtered []string
+                for _, f := range changed </span><span class="cov0" title="0">{
+                        if selectedSet[f] </span><span class="cov0" title="0">{
+                                filtered = append(filtered, f)
+                        }</span>
+                }
+                <span class="cov0" title="0">target = filtered</span>
+        }
+
+        <span class="cov0" title="0">derived := *current
+        var conflicts, accepted []string
+        for _, field := range target </span><span class="cov0" title="0">{
+                if !reflect.DeepEqual(cfg.fieldValue(current, field), cfg.fieldValue(baseVersion, field)) </span><span class="cov0" title="0">{
+                        conflicts = append(conflicts, field)
+                        continue</span>
+                }
+                <span class="cov0" title="0">cfg.setFieldValue(&amp;derived, field, cfg.fieldValue(submitted, field))
+                accepted = append(accepted, field)</span>
+        }
+
+        <span class="cov0" title="0">nextVersion, err := cfg.nextVersionNumber(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+
+        <span class="cov0" title="0">cfg.setID(&amp;derived, primitive.NewObjectID().Hex())
+        cfg.setRecordID(&amp;derived, id)
+        cfg.setVersion(&amp;derived, nextVersion)
+        derivedLC := cfg.lifecycle(&amp;derived)
+        derivedLC.State = models.VersionStateLive
+        derivedLC.BaseVersion = &amp;meta.CurrentVersion
+        derivedLC.SubmittedBy = submittedLC.SubmittedBy
+        derivedLC.SubmittedAt = now
+        derivedLC.ReviewedBy = &amp;reviewedBy
+        derivedLC.ReviewedAt = &amp;now
+        derivedLC.ReviewNote = reviewNote
+        derivedLC.ResultingVersion = nil
+
+        if _, err := database.Insert[T](cfg.versionCollection, derived); err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov0" title="0">if err := cfg.archiveVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov0" title="0">if err := cfg.setMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+        <span class="cov0" title="0">if err := cfg.setVersionState(c, id, version, bson.D{
+                {Key: "state", Value: string(models.VersionStatePartiallyAccepted)},
+                {Key: "reviewed_by", Value: reviewedBy},
+                {Key: "reviewed_at", Value: now},
+                {Key: "review_note", Value: reviewNote},
+                {Key: "resulting_version", Value: nextVersion},
+        }); err != nil </span><span class="cov0" title="0">{
+                return nil, nil, err
+        }</span>
+
+        <span class="cov0" title="0">_ = accepted
+        return &amp;derived, conflicts, nil</span>
+}
+
+// rejectVersion marks a submitted version rejected, with an optional note.
+func (cfg entityVersioningConfig[T]) rejectVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error <span class="cov1" title="1">{
+        submitted, err := cfg.getVersion(c, id, version)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov1" title="1">if submitted == nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("%s %s: version %d not found", cfg.typeName, id, version)
+        }</span>
+        <span class="cov1" title="1">if cfg.lifecycle(submitted).State != models.VersionStateSubmitted </span><span class="cov0" title="0">{
+                return fmt.Errorf("%s %s: version %d is not submitted", cfg.typeName, id, version)
+        }</span>
+        <span class="cov1" title="1">now := time.Now()
+        return cfg.setVersionState(c, id, version, bson.D{
+                {Key: "state", Value: string(models.VersionStateRejected)},
+                {Key: "reviewed_by", Value: reviewedBy},
+                {Key: "reviewed_at", Value: now},
+                {Key: "review_note", Value: reviewNote},
+        })</span>
+}
+
+// retractVersion lets the original submitter withdraw their own pending submission.
+func (cfg entityVersioningConfig[T]) retractVersion(c context.Context, id string, version int, submitterID string) (*T, error) <span class="cov1" title="1">{
+        submitted, err := cfg.getVersion(c, id, version)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if submitted == nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("%s %s: version %d not found", cfg.typeName, id, version)
+        }</span>
+        <span class="cov1" title="1">lc := cfg.lifecycle(submitted)
+        if lc.State != models.VersionStateSubmitted </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("%s %s: version %d is not submitted", cfg.typeName, id, version)
+        }</span>
+        <span class="cov1" title="1">if lc.SubmittedBy != submitterID </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("%s %s: version %d was not submitted by %s", cfg.typeName, id, version, submitterID)
+        }</span>
+        <span class="cov1" title="1">if err := cfg.setVersionState(c, id, version, bson.D{{Key: "state", Value: string(models.VersionStateWithdrawn)}}); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">lc.State = models.VersionStateWithdrawn
+        return submitted, nil</span>
+}
+
+// setCurrentVersion rolls a record back (or forward) to an arbitrary existing version.
+func (cfg entityVersioningConfig[T]) setCurrentVersion(c context.Context, id string, version int) (*T, error) <span class="cov1" title="1">{
+        meta, err := cfg.getMeta(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if meta == nil </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov1" title="1">target, err := cfg.getVersion(c, id, version)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if target == nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("%s %s: version %d not found", cfg.typeName, id, version)
+        }</span>
+        <span class="cov1" title="1">if version == meta.CurrentVersion </span><span class="cov0" title="0">{
+                return target, nil
+        }</span>
+        <span class="cov1" title="1">if err := cfg.archiveVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if err := cfg.setVersionState(c, id, version, bson.D{{Key: "state", Value: string(models.VersionStateLive)}}); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if err := cfg.setMetaCurrentVersion(c, id, version); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">cfg.lifecycle(target).State = models.VersionStateLive
+        return target, nil</span>
+}
+
+// countSubmittedBySubmitter counts a submitter's currently-pending (state: submitted) versions.
+func (cfg entityVersioningConfig[T]) countSubmittedBySubmitter(c context.Context, submittedBy string) (int64, error) <span class="cov0" title="0">{
+        filter := bson.D{
+                {Key: "submitted_by", Value: submittedBy},
+                {Key: "state", Value: string(models.VersionStateSubmitted)},
+        }
+        return database.Db.Collection(cfg.versionCollection).CountDocuments(c, filter)
+}</span>
+
+// migrationConfig wires the generic one-time backfill below (shared across publisher, studio,
+// person, license, and system - see MigrateVolumes' doc comment for the bespoke original this
+// mirrors) to one entity type's old flat collection and old/new model shapes.
+type migrationConfig[Old any, New any] struct {
+        oldCollection string
+        versioning    entityVersioningConfig[New]
+        id            func(*Old) string
+        auditable     func(*Old) modelcore.Auditable
+        toVersion     func(*Old) New // substantive fields only - lifecycle fields are set generically
+}
+
+// migrateEntity backfills every existing document in cfg.oldCollection (the pre-versioning flat
+// model) into a meta record plus a single live version, per design.md's Migration Plan.
+// Idempotent - a record that already has a meta record (recognized by the same ID) is left
+// untouched, so this is safe to re-run after a partial failure.
+func migrateEntity[Old any, New any](c context.Context, cfg migrationConfig[Old, New]) (int, error) <span class="cov3" title="3">{
+        all, err := database.Query[Old](cfg.oldCollection, bson.D{}, nil, nil, 0, 0)
+        if err != nil </span><span class="cov0" title="0">{
+                return 0, fmt.Errorf("migrate %s: query existing documents: %w", cfg.oldCollection, err)
+        }</span>
+
+        <span class="cov3" title="3">migrated := 0
+        for _, old := range all </span><span class="cov4" title="5">{
+                id := cfg.id(old)
+                existing, err := cfg.versioning.getMeta(c, id)
+                if err != nil </span><span class="cov0" title="0">{
+                        return migrated, err
+                }</span>
+                <span class="cov4" title="5">if existing != nil </span><span class="cov3" title="3">{
+                        continue</span>
+                }
+
+                <span class="cov2" title="2">aud := cfg.auditable(old)
+                meta := models.EntityMeta{
+                        ID: id, CurrentVersion: 1, CreatedAt: aud.CreatedAt, CreatedBy: aud.CreatedBy,
+                        DeletedAt: aud.DeletedAt, DeletedBy: aud.DeletedBy,
+                }
+                if _, err := database.Insert[models.EntityMeta](cfg.versioning.metaCollection, meta); err != nil </span><span class="cov0" title="0">{
+                        return migrated, fmt.Errorf("migrate %s: insert meta for %s: %w", cfg.oldCollection, id, err)
+                }</span>
+
+                <span class="cov2" title="2">version := cfg.toVersion(old)
+                cfg.versioning.setID(&amp;version, primitive.NewObjectID().Hex())
+                cfg.versioning.setRecordID(&amp;version, id)
+                cfg.versioning.setVersion(&amp;version, 1)
+                lc := cfg.versioning.lifecycle(&amp;version)
+                lc.State = models.VersionStateLive
+                lc.BaseVersion = nil
+                lc.SubmittedBy = aud.UpdatedBy
+                lc.SubmittedAt = aud.UpdatedAt
+                if _, err := database.Insert[New](cfg.versioning.versionCollection, version); err != nil </span><span class="cov0" title="0">{
+                        return migrated, fmt.Errorf("migrate %s: insert version for %s: %w", cfg.oldCollection, id, err)
+                }</span>
+
+                <span class="cov2" title="2">migrated++</span>
+        }
+
+        <span class="cov3" title="3">return migrated, nil</span>
 }
 </pre>
 		
@@ -404,135 +771,237 @@ func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.License
 
 import (
         "context"
-        "fmt"
+        "net/url"
         "time"
 
-        "github.com/sweetrpg/api-core.go/tracing"
         apiutil "github.com/sweetrpg/api-core.go/util"
         "github.com/sweetrpg/catalog-objects.go/models"
         "github.com/sweetrpg/catalog-objects.go/vo"
-        "github.com/sweetrpg/common.go/logging"
         modelcore "github.com/sweetrpg/model-core.go/models"
         modelcoreutil "github.com/sweetrpg/model-core.go/util"
         modelcorevo "github.com/sweetrpg/model-core.go/vo"
         "github.com/sweetrpg/mongodb.go/database"
-        "go.mongodb.org/mongo-driver/bson"
-        "go.opentelemetry.io/otel"
-        "go.opentelemetry.io/otel/attribute"
-        oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func GetPerson(c context.Context, id string) (*vo.PersonVO, error) <span class="cov10" title="6">{
-        _, span := otel.Tracer("person").Start(c, "db-get-person", oteltrace.WithAttributes(attribute.String("id", id)))
-        results, err := database.Query[models.Person]("persons", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
-        span.End()
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for Person: %v", err))
-                return nil, err
-        }</span>
+const (
+        licenseMetaCollection    = "licenses_meta"
+        licenseVersionCollection = "licenses_versions"
+)
 
-        <span class="cov10" title="6">if len(results) == 0 </span><span class="cov1" title="1">{
-                logging.Logger.Info(fmt.Sprintf("Person not found for ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov9" title="5">return personModelToVO(results[0]), nil</span>
+var licenseVersioning = entityVersioningConfig[models.LicenseVersion]{
+        metaCollection:    licenseMetaCollection,
+        versionCollection: licenseVersionCollection,
+        typeName:          "license",
+        lifecycle:         func(v *models.LicenseVersion) *models.VersionLifecycle <span class="cov10" title="6">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.LicenseVersion, id string) <span class="cov9" title="5">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.LicenseVersion, id string) <span class="cov9" title="5">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.LicenseVersion, n int) <span class="cov9" title="5">{ v.Version = n }</span>,
+        fields: map[string]entityFieldAccessor[models.LicenseVersion]{
+                "title":         {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.Title }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.Title = val.(string) }</span>},
+                "short_title":   {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.ShortTitle }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.ShortTitle = val.(string) }</span>},
+                "version_label": {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.LicenseVer }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.LicenseVer = val.(string) }</span>},
+                "deed":          {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.Deed }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.Deed = val.(string) }</span>},
+                "legal_code":    {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.LegalCode }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.LegalCode = val.(string) }</span>},
+                "website":       {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.Website }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.Website = val.(url.URL) }</span>},
+                "status":        {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.Status }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.Status = val.(string) }</span>},
+                "availability":  {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.Availability }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.Availability = val.(string) }</span>},
+                "notes":         {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.Notes }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.Notes = val.(string) }</span>},
+                "properties":    {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.Properties }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.Properties = val.([]modelcore.Property) }</span>},
+                "tags":          {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.Tags }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.Tags = val.([]modelcore.Tag) }</span>},
+        },
 }
 
-func personModelToVO(model *models.Person) *vo.PersonVO <span class="cov9" title="5">{
-        return &amp;vo.PersonVO{
-                ID:         model.ID,
-                Name:       model.Name,
-                Notes:      model.Notes,
-                Properties: modelcoreutil.FromPropertyModels(model.Properties),
-                Tags:       modelcoreutil.FromTagModels(model.Tags),
-                AuditableVO: modelcorevo.AuditableVO{
-                        CreatedAt: model.CreatedAt,
-                        CreatedBy: model.CreatedBy,
-                        UpdatedAt: model.UpdatedAt,
-                        UpdatedBy: model.UpdatedBy,
-                        DeletedAt: model.DeletedAt,
-                        DeletedBy: model.DeletedBy,
+// EnsureLicenseVersioningIndexes creates the indexes license version queries rely on. Safe to
+// call on every startup.
+func EnsureLicenseVersioningIndexes(c context.Context) error <span class="cov6" title="3">{
+        return licenseVersioning.ensureIndexes(c)
+}</span>
+
+func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO <span class="cov6" title="3">{
+        return &amp;vo.LicenseVersionVO{
+                ID: version.ID, RecordID: version.RecordID, Version: version.Version,
+                Title: version.Title, ShortTitle: version.ShortTitle, LicenseVer: version.LicenseVer,
+                Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website,
+                Status: version.Status, Availability: version.Availability, Notes: version.Notes,
+                Properties: modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:       modelcoreutil.FromTagModels(version.Tags),
+                VersionLifecycleVO: vo.VersionLifecycleVO{
+                        State: vo.VersionState(version.State), BaseVersion: version.BaseVersion,
+                        SubmittedBy: version.SubmittedBy, SubmittedAt: version.SubmittedAt,
+                        ReviewedBy: version.ReviewedBy, ReviewedAt: version.ReviewedAt,
+                        ReviewNote: version.ReviewNote, ResultingVersion: version.ResultingVersion,
                 },
         }
 }</span>
 
-// UpdatePerson merges the provided fields into the existing person and writes it, mirroring
-// UpdatePublisher's raw-marshal $set approach.
-func UpdatePerson(c context.Context, id string, person *vo.PersonVO) (*vo.PersonVO, error) <span class="cov4" title="2">{
-        _, span := otel.Tracer("person").Start(c, "db-update-person", oteltrace.WithAttributes(attribute.String("id", id)))
-        defer span.End()
+func licenseVersionFields(license *vo.LicenseVO) models.LicenseVersion <span class="cov10" title="6">{
+        return models.LicenseVersion{
+                Title: license.Title, ShortTitle: license.ShortTitle, LicenseVer: license.Version,
+                Deed: license.Deed, LegalCode: license.LegalCode, Website: license.Website,
+                Status: license.Status, Availability: license.Availability, Notes: license.Notes,
+                Properties: modelcoreutil.ToPropertyModels(license.Properties),
+                Tags:       modelcoreutil.ToTagModels(license.Tags),
+        }
+}</span>
 
-        existing, err := GetPerson(c, id)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while looking up existing Person for update", "id", id, "error", err)
-                return nil, err
-        }</span>
-        <span class="cov4" title="2">if existing == nil </span><span class="cov1" title="1">{
-                logging.Logger.Info(fmt.Sprintf("Person not found for update, ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov1" title="1">model := models.Person{
-                ID:         id,
-                Name:       person.Name,
-                Notes:      person.Notes,
-                Properties: modelcoreutil.ToPropertyModels(person.Properties),
-                Tags:       modelcoreutil.ToTagModels(person.Tags),
-                Auditable: modelcore.Auditable{
-                        CreatedAt: existing.CreatedAt,
-                        CreatedBy: existing.CreatedBy,
-                        UpdatedAt: time.Now(),
-                        UpdatedBy: person.UpdatedBy,
-                        DeletedAt: nil,
-                        DeletedBy: nil,
+func flattenLicense(meta *models.EntityMeta, version *models.LicenseVersion) *vo.LicenseVO <span class="cov4" title="2">{
+        return &amp;vo.LicenseVO{
+                ID: meta.ID, Title: version.Title, ShortTitle: version.ShortTitle, Version: version.LicenseVer,
+                Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website,
+                Status: version.Status, Availability: version.Availability, Notes: version.Notes,
+                Properties: modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:       modelcoreutil.FromTagModels(version.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
+                        UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+                        DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
                 },
         }
+}</span>
 
-        data, err := bson.Marshal(model)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while preparing Person document for update", "error", err)
-                return nil, err
-        }</span>
-        <span class="cov1" title="1">var update bson.D
-        if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while unmarshaling Person document for update", "error", err)
-                return nil, err
-        }</span>
+// AddLicense creates a license's meta record and its first (live) version.
+func AddLicense(c context.Context, license *vo.LicenseVO) (*string, error) <span class="cov6" title="3">{
+        version := licenseVersionFields(license)
+        return licenseVersioning.addEntity(c, &amp;version, license.CreatedBy)
+}</span>
 
-        <span class="cov1" title="1">result, err := database.Db.Collection("persons").UpdateOne(
-                c,
-                bson.D{{Key: "_id", Value: id}},
-                bson.D{{Key: "$set", Value: update}},
-        )
+// GetLicense returns the flattened view of a license.
+func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) <span class="cov4" title="2">{
+        meta, err := licenseVersioning.getMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while updating Person in database", "id", id, "error", err)
                 return nil, err
         }</span>
-        <span class="cov1" title="1">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
-                logging.Logger.Info(fmt.Sprintf("Person not found for update, ID: %s", id))
+        <span class="cov4" title="2">if meta == nil </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-
-        <span class="cov1" title="1">return GetPerson(c, id)</span>
-}
-
-func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) <span class="cov0" title="0">{
-        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
-        filter, sort, projection := apiutil.ConvertQueryParams(params)
-        models, err := database.Query[models.Person]("persons", filter, sort, projection, params.Start, params.Limit)
-        span.End()
+        <span class="cov4" title="2">version, err := licenseVersioning.getVersion(c, id, meta.CurrentVersion)
         if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for Persons: %v", err))
                 return nil, err
         }</span>
-
-        <span class="cov0" title="0">vos := make([]*vo.PersonVO, 0, len(models))
-        for _, model := range models </span><span class="cov0" title="0">{
-                vos = append(vos, personModelToVO(model))
+        <span class="cov4" title="2">if version == nil </span><span class="cov0" title="0">{
+                return nil, nil
         }</span>
+        <span class="cov4" title="2">return flattenLicense(meta, version), nil</span>
+}
 
+// UpdateLicense creates a new version of the license rather than mutating in place.
+func UpdateLicense(c context.Context, id string, license *vo.LicenseVO, state models.VersionState) (*vo.LicenseVersionVO, error) <span class="cov6" title="3">{
+        version := licenseVersionFields(license)
+        result, err := licenseVersioning.createVersion(c, id, &amp;version, state, license.UpdatedBy)
+        if err != nil || result == nil </span><span class="cov1" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov4" title="2">return licenseVersionToVO(result), nil</span>
+}
+
+// ListLicenseVersions returns every version of a license, newest first.
+func ListLicenseVersions(c context.Context, id string) ([]*vo.LicenseVersionVO, error) <span class="cov0" title="0">{
+        versions, err := licenseVersioning.listVersions(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">vos := make([]*vo.LicenseVersionVO, 0, len(versions))
+        for _, v := range versions </span><span class="cov0" title="0">{
+                vos = append(vos, licenseVersionToVO(v))
+        }</span>
         <span class="cov0" title="0">return vos, nil</span>
+}
+
+// GetLicenseVersion returns one version's full snapshot.
+func GetLicenseVersion(c context.Context, id string, version int) (*vo.LicenseVersionVO, error) <span class="cov0" title="0">{
+        result, err := licenseVersioning.getVersion(c, id, version)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return licenseVersionToVO(result), nil</span>
+}
+
+// AcceptLicenseVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.
+func AcceptLicenseVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string) (*vo.LicenseVersionVO, []string, error) <span class="cov1" title="1">{
+        result, conflicts, err := licenseVersioning.acceptVersion(c, id, version, selectedFields, reviewedBy, reviewNote)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, conflicts, err
+        }</span>
+        <span class="cov1" title="1">return licenseVersionToVO(result), conflicts, nil</span>
+}
+
+// RejectLicenseVersion marks a submitted version rejected.
+func RejectLicenseVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error <span class="cov0" title="0">{
+        return licenseVersioning.rejectVersion(c, id, version, reviewedBy, reviewNote)
+}</span>
+
+// RetractLicenseVersion lets the original submitter withdraw their own pending submission.
+func RetractLicenseVersion(c context.Context, id string, version int, submitterID string) (*vo.LicenseVersionVO, error) <span class="cov0" title="0">{
+        result, err := licenseVersioning.retractVersion(c, id, version, submitterID)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return licenseVersionToVO(result), nil</span>
+}
+
+// SetCurrentLicenseVersion rolls a license back (or forward) to an arbitrary existing version.
+func SetCurrentLicenseVersion(c context.Context, id string, version int) (*vo.LicenseVersionVO, error) <span class="cov0" title="0">{
+        result, err := licenseVersioning.setCurrentVersion(c, id, version)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return licenseVersionToVO(result), nil</span>
+}
+
+// CountSubmittedLicenseVersionsBySubmitter counts a submitter's currently-pending versions.
+func CountSubmittedLicenseVersionsBySubmitter(c context.Context, submittedBy string) (int64, error) <span class="cov0" title="0">{
+        return licenseVersioning.countSubmittedBySubmitter(c, submittedBy)
+}</span>
+
+// QueryLicenses lists the current (live) version of every license matching params.
+func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) <span class="cov0" title="0">{
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        metas, err := database.Query[models.EntityMeta](licenseMetaCollection, filter, sort, projection, params.Start, params.Limit)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">vos := make([]*vo.LicenseVO, 0, len(metas))
+        for _, meta := range metas </span><span class="cov0" title="0">{
+                version, err := licenseVersioning.getVersion(c, meta.ID, meta.CurrentVersion)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov0" title="0">if version == nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, flattenLicense(meta, version))</span>
+        }
+        <span class="cov0" title="0">return vos, nil</span>
+}
+
+// CreateSubmittedLicenseVersion creates a submitted version stamped with a caller-supplied
+// submittedBy/submittedAt - see CreateSubmittedPublisherVersion's doc comment.
+func CreateSubmittedLicenseVersion(c context.Context, id string, license *vo.LicenseVO, submittedBy string, submittedAt time.Time) (*vo.LicenseVersionVO, error) <span class="cov0" title="0">{
+        version := licenseVersionFields(license)
+        result, err := licenseVersioning.createVersionWithSubmission(c, id, &amp;version, models.VersionStateSubmitted, submittedBy, submittedAt)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return licenseVersionToVO(result), nil</span>
+}
+
+// MigrateLicenses backfills every existing "licenses" document into a meta record plus a single
+// live version - see MigratePublishers' doc comment.
+func MigrateLicenses(c context.Context) (int, error) <span class="cov0" title="0">{
+        return migrateEntity(c, migrationConfig[models.License, models.LicenseVersion]{
+                oldCollection: "licenses",
+                versioning:    licenseVersioning,
+                id:            func(l *models.License) string </span><span class="cov0" title="0">{ return l.ID }</span>,
+                auditable:     func(l *models.License) modelcore.Auditable <span class="cov0" title="0">{ return l.Auditable }</span>,
+                toVersion: func(l *models.License) models.LicenseVersion <span class="cov0" title="0">{
+                        return models.LicenseVersion{
+                                Title: l.Title, ShortTitle: l.ShortTitle, LicenseVer: l.Version, Deed: l.Deed,
+                                LegalCode: l.LegalCode, Website: l.Website, Status: l.Status,
+                                Availability: l.Availability, Notes: l.Notes,
+                                Properties: l.Properties, Tags: l.Tags,
+                        }
+                }</span>,
+        })
 }
 </pre>
 		
@@ -540,144 +1009,455 @@ func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO
 
 import (
         "context"
-        "fmt"
         "time"
 
-        "github.com/sweetrpg/api-core.go/tracing"
         apiutil "github.com/sweetrpg/api-core.go/util"
         "github.com/sweetrpg/catalog-objects.go/models"
         "github.com/sweetrpg/catalog-objects.go/vo"
-        "github.com/sweetrpg/common.go/logging"
         modelcore "github.com/sweetrpg/model-core.go/models"
         modelcoreutil "github.com/sweetrpg/model-core.go/util"
         modelcorevo "github.com/sweetrpg/model-core.go/vo"
         "github.com/sweetrpg/mongodb.go/database"
-        "go.mongodb.org/mongo-driver/bson"
-        "go.opentelemetry.io/otel"
-        "go.opentelemetry.io/otel/attribute"
-        oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov10" title="6">{
-        _, span := otel.Tracer("publisher").Start(c, "db-get-publisher", oteltrace.WithAttributes(attribute.String("id", id)))
-        results, err := database.Query[models.Publisher]("publishers", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
-        span.End()
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for Publisher: %v", err))
-                return nil, err
-        }</span>
+const (
+        personMetaCollection    = "persons_meta"
+        personVersionCollection = "persons_versions"
+)
 
-        <span class="cov10" title="6">if len(results) == 0 </span><span class="cov1" title="1">{
-                logging.Logger.Info(fmt.Sprintf("Publisher not found for ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov9" title="5">return publisherModelToVO(results[0]), nil</span>
+var personVersioning = entityVersioningConfig[models.PersonVersion]{
+        metaCollection:    personMetaCollection,
+        versionCollection: personVersionCollection,
+        typeName:          "person",
+        lifecycle:         func(v *models.PersonVersion) *models.VersionLifecycle <span class="cov10" title="8">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.PersonVersion, id string) <span class="cov9" title="7">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.PersonVersion, id string) <span class="cov9" title="7">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.PersonVersion, n int) <span class="cov9" title="7">{ v.Version = n }</span>,
+        fields: map[string]entityFieldAccessor[models.PersonVersion]{
+                "name":       {get: func(v *models.PersonVersion) any <span class="cov0" title="0">{ return v.Name }</span>, set: func(v *models.PersonVersion, val any) <span class="cov0" title="0">{ v.Name = val.(string) }</span>},
+                "notes":      {get: func(v *models.PersonVersion) any <span class="cov0" title="0">{ return v.Notes }</span>, set: func(v *models.PersonVersion, val any) <span class="cov0" title="0">{ v.Notes = val.(string) }</span>},
+                "properties": {get: func(v *models.PersonVersion) any <span class="cov0" title="0">{ return v.Properties }</span>, set: func(v *models.PersonVersion, val any) <span class="cov0" title="0">{ v.Properties = val.([]modelcore.Property) }</span>},
+                "tags":       {get: func(v *models.PersonVersion) any <span class="cov0" title="0">{ return v.Tags }</span>, set: func(v *models.PersonVersion, val any) <span class="cov0" title="0">{ v.Tags = val.([]modelcore.Tag) }</span>},
+        },
 }
 
-func publisherModelToVO(model *models.Publisher) *vo.PublisherVO <span class="cov9" title="5">{
-        return &amp;vo.PublisherVO{
-                ID:         model.ID,
-                Name:       model.Name,
-                Address:    model.Address,
-                Website:    model.Website,
-                Notes:      model.Notes,
-                Properties: modelcoreutil.FromPropertyModels(model.Properties),
-                Tags:       modelcoreutil.FromTagModels(model.Tags),
-                AuditableVO: modelcorevo.AuditableVO{
-                        CreatedAt: model.CreatedAt,
-                        CreatedBy: model.CreatedBy,
-                        UpdatedAt: model.UpdatedAt,
-                        UpdatedBy: model.UpdatedBy,
-                        DeletedAt: model.DeletedAt,
-                        DeletedBy: model.DeletedBy,
+// EnsurePersonVersioningIndexes creates the indexes person version queries rely on. Safe to call
+// on every startup.
+func EnsurePersonVersioningIndexes(c context.Context) error <span class="cov5" title="3">{
+        return personVersioning.ensureIndexes(c)
+}</span>
+
+func personVersionToVO(version *models.PersonVersion) *vo.PersonVersionVO <span class="cov5" title="3">{
+        return &amp;vo.PersonVersionVO{
+                ID: version.ID, RecordID: version.RecordID, Version: version.Version,
+                Name: version.Name, Notes: version.Notes,
+                Properties: modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:       modelcoreutil.FromTagModels(version.Tags),
+                VersionLifecycleVO: vo.VersionLifecycleVO{
+                        State: vo.VersionState(version.State), BaseVersion: version.BaseVersion,
+                        SubmittedBy: version.SubmittedBy, SubmittedAt: version.SubmittedAt,
+                        ReviewedBy: version.ReviewedBy, ReviewedAt: version.ReviewedAt,
+                        ReviewNote: version.ReviewNote, ResultingVersion: version.ResultingVersion,
                 },
         }
 }</span>
 
-// UpdatePublisher merges the provided fields into the existing publisher and writes it, mirroring
-// UpdateVolume's raw-marshal $set approach (there's no generic update path since the "_id" field
-// is a plain string, not a primitive.ObjectID, so database.Update[T] doesn't apply here).
-func UpdatePublisher(c context.Context, id string, publisher *vo.PublisherVO) (*vo.PublisherVO, error) <span class="cov4" title="2">{
-        _, span := otel.Tracer("publisher").Start(c, "db-update-publisher", oteltrace.WithAttributes(attribute.String("id", id)))
-        defer span.End()
+func personVersionFields(person *vo.PersonVO) models.PersonVersion <span class="cov10" title="8">{
+        return models.PersonVersion{
+                Name: person.Name, Notes: person.Notes,
+                Properties: modelcoreutil.ToPropertyModels(person.Properties),
+                Tags:       modelcoreutil.ToTagModels(person.Tags),
+        }
+}</span>
 
-        existing, err := GetPublisher(c, id)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while looking up existing Publisher for update", "id", id, "error", err)
-                return nil, err
-        }</span>
-        <span class="cov4" title="2">if existing == nil </span><span class="cov1" title="1">{
-                logging.Logger.Info(fmt.Sprintf("Publisher not found for update, ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov1" title="1">model := models.Publisher{
-                ID:         id,
-                Name:       publisher.Name,
-                Address:    publisher.Address,
-                Website:    publisher.Website,
-                Notes:      publisher.Notes,
-                Properties: modelcoreutil.ToPropertyModels(publisher.Properties),
-                Tags:       modelcoreutil.ToTagModels(publisher.Tags),
-                Auditable: modelcore.Auditable{
-                        CreatedAt: existing.CreatedAt,
-                        CreatedBy: existing.CreatedBy,
-                        UpdatedAt: time.Now(),
-                        UpdatedBy: publisher.UpdatedBy,
-                        DeletedAt: nil,
-                        DeletedBy: nil,
+func flattenPerson(meta *models.EntityMeta, version *models.PersonVersion) *vo.PersonVO <span class="cov7" title="4">{
+        return &amp;vo.PersonVO{
+                ID: meta.ID, Name: version.Name, Notes: version.Notes,
+                Properties: modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:       modelcoreutil.FromTagModels(version.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
+                        UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+                        DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
                 },
         }
+}</span>
 
-        data, err := bson.Marshal(model)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while preparing Publisher document for update", "error", err)
-                return nil, err
-        }</span>
-        <span class="cov1" title="1">var update bson.D
-        if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while unmarshaling Publisher document for update", "error", err)
-                return nil, err
-        }</span>
+// AddPerson creates a person's meta record and its first (live) version.
+func AddPerson(c context.Context, person *vo.PersonVO) (*string, error) <span class="cov7" title="5">{
+        version := personVersionFields(person)
+        return personVersioning.addEntity(c, &amp;version, person.CreatedBy)
+}</span>
 
-        <span class="cov1" title="1">result, err := database.Db.Collection("publishers").UpdateOne(
-                c,
-                bson.D{{Key: "_id", Value: id}},
-                bson.D{{Key: "$set", Value: update}},
-        )
+// GetPerson returns the flattened view of a person.
+func GetPerson(c context.Context, id string) (*vo.PersonVO, error) <span class="cov7" title="4">{
+        meta, err := personVersioning.getMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while updating Publisher in database", "id", id, "error", err)
                 return nil, err
         }</span>
-        <span class="cov1" title="1">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
-                logging.Logger.Info(fmt.Sprintf("Publisher not found for update, ID: %s", id))
+        <span class="cov7" title="4">if meta == nil </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-
-        <span class="cov1" title="1">return GetPublisher(c, id)</span>
-}
-
-func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) <span class="cov0" title="0">{
-        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
-        filter, sort, projection := apiutil.ConvertQueryParams(params)
-        models, err := database.Query[models.Publisher]("publishers", filter, sort, projection, params.Start, params.Limit)
-        span.End()
+        <span class="cov7" title="4">version, err := personVersioning.getVersion(c, id, meta.CurrentVersion)
         if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for Publishers: %v", err))
                 return nil, err
         }</span>
-
-        <span class="cov0" title="0">vos := make([]*vo.PublisherVO, 0, len(models))
-        for _, model := range models </span><span class="cov0" title="0">{
-                vos = append(vos, publisherModelToVO(model))
+        <span class="cov7" title="4">if version == nil </span><span class="cov0" title="0">{
+                return nil, nil
         }</span>
+        <span class="cov7" title="4">return flattenPerson(meta, version), nil</span>
+}
 
+// UpdatePerson creates a new version of the person rather than mutating in place.
+func UpdatePerson(c context.Context, id string, person *vo.PersonVO, state models.VersionState) (*vo.PersonVersionVO, error) <span class="cov5" title="3">{
+        version := personVersionFields(person)
+        result, err := personVersioning.createVersion(c, id, &amp;version, state, person.UpdatedBy)
+        if err != nil || result == nil </span><span class="cov1" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov4" title="2">return personVersionToVO(result), nil</span>
+}
+
+// ListPersonVersions returns every version of a person, newest first.
+func ListPersonVersions(c context.Context, id string) ([]*vo.PersonVersionVO, error) <span class="cov0" title="0">{
+        versions, err := personVersioning.listVersions(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">vos := make([]*vo.PersonVersionVO, 0, len(versions))
+        for _, v := range versions </span><span class="cov0" title="0">{
+                vos = append(vos, personVersionToVO(v))
+        }</span>
         <span class="cov0" title="0">return vos, nil</span>
+}
+
+// GetPersonVersion returns one version's full snapshot.
+func GetPersonVersion(c context.Context, id string, version int) (*vo.PersonVersionVO, error) <span class="cov0" title="0">{
+        result, err := personVersioning.getVersion(c, id, version)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return personVersionToVO(result), nil</span>
+}
+
+// AcceptPersonVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.
+func AcceptPersonVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string) (*vo.PersonVersionVO, []string, error) <span class="cov1" title="1">{
+        result, conflicts, err := personVersioning.acceptVersion(c, id, version, selectedFields, reviewedBy, reviewNote)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, conflicts, err
+        }</span>
+        <span class="cov1" title="1">return personVersionToVO(result), conflicts, nil</span>
+}
+
+// RejectPersonVersion marks a submitted version rejected.
+func RejectPersonVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error <span class="cov0" title="0">{
+        return personVersioning.rejectVersion(c, id, version, reviewedBy, reviewNote)
+}</span>
+
+// RetractPersonVersion lets the original submitter withdraw their own pending submission.
+func RetractPersonVersion(c context.Context, id string, version int, submitterID string) (*vo.PersonVersionVO, error) <span class="cov0" title="0">{
+        result, err := personVersioning.retractVersion(c, id, version, submitterID)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return personVersionToVO(result), nil</span>
+}
+
+// SetCurrentPersonVersion rolls a person back (or forward) to an arbitrary existing version.
+func SetCurrentPersonVersion(c context.Context, id string, version int) (*vo.PersonVersionVO, error) <span class="cov0" title="0">{
+        result, err := personVersioning.setCurrentVersion(c, id, version)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return personVersionToVO(result), nil</span>
+}
+
+// CountSubmittedPersonVersionsBySubmitter counts a submitter's currently-pending versions.
+func CountSubmittedPersonVersionsBySubmitter(c context.Context, submittedBy string) (int64, error) <span class="cov0" title="0">{
+        return personVersioning.countSubmittedBySubmitter(c, submittedBy)
+}</span>
+
+// QueryPersons lists the current (live) version of every person matching params.
+func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) <span class="cov0" title="0">{
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        metas, err := database.Query[models.EntityMeta](personMetaCollection, filter, sort, projection, params.Start, params.Limit)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">vos := make([]*vo.PersonVO, 0, len(metas))
+        for _, meta := range metas </span><span class="cov0" title="0">{
+                version, err := personVersioning.getVersion(c, meta.ID, meta.CurrentVersion)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov0" title="0">if version == nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, flattenPerson(meta, version))</span>
+        }
+        <span class="cov0" title="0">return vos, nil</span>
+}
+
+// CreateSubmittedPersonVersion creates a submitted version stamped with a caller-supplied
+// submittedBy/submittedAt - see CreateSubmittedPublisherVersion's doc comment.
+func CreateSubmittedPersonVersion(c context.Context, id string, person *vo.PersonVO, submittedBy string, submittedAt time.Time) (*vo.PersonVersionVO, error) <span class="cov0" title="0">{
+        version := personVersionFields(person)
+        result, err := personVersioning.createVersionWithSubmission(c, id, &amp;version, models.VersionStateSubmitted, submittedBy, submittedAt)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return personVersionToVO(result), nil</span>
+}
+
+// MigratePersons backfills every existing "persons" document into a meta record plus a single
+// live version - see MigratePublishers' doc comment.
+func MigratePersons(c context.Context) (int, error) <span class="cov0" title="0">{
+        return migrateEntity(c, migrationConfig[models.Person, models.PersonVersion]{
+                oldCollection: "persons",
+                versioning:    personVersioning,
+                id:            func(p *models.Person) string </span><span class="cov0" title="0">{ return p.ID }</span>,
+                auditable:     func(p *models.Person) modelcore.Auditable <span class="cov0" title="0">{ return p.Auditable }</span>,
+                toVersion: func(p *models.Person) models.PersonVersion <span class="cov0" title="0">{
+                        return models.PersonVersion{
+                                Name: p.Name, Notes: p.Notes, Properties: p.Properties, Tags: p.Tags,
+                        }
+                }</span>,
+        })
 }
 </pre>
 		
 		<pre class="file" id="file4" style="display: none">package data
+
+import (
+        "context"
+        "net/url"
+        "time"
+
+        apiutil "github.com/sweetrpg/api-core.go/util"
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        modelcore "github.com/sweetrpg/model-core.go/models"
+        modelcoreutil "github.com/sweetrpg/model-core.go/util"
+        modelcorevo "github.com/sweetrpg/model-core.go/vo"
+        "github.com/sweetrpg/mongodb.go/database"
+)
+
+const (
+        publisherMetaCollection    = "publishers_meta"
+        publisherVersionCollection = "publishers_versions"
+)
+
+var publisherVersioning = entityVersioningConfig[models.PublisherVersion]{
+        metaCollection:    publisherMetaCollection,
+        versionCollection: publisherVersionCollection,
+        typeName:          "publisher",
+        lifecycle:         func(v *models.PublisherVersion) *models.VersionLifecycle <span class="cov10" title="22">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.PublisherVersion, id string) <span class="cov9" title="18">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.PublisherVersion, id string) <span class="cov9" title="18">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.PublisherVersion, n int) <span class="cov9" title="18">{ v.Version = n }</span>,
+        fields: map[string]entityFieldAccessor[models.PublisherVersion]{
+                "name":       {get: func(v *models.PublisherVersion) any <span class="cov0" title="0">{ return v.Name }</span>, set: func(v *models.PublisherVersion, val any) <span class="cov0" title="0">{ v.Name = val.(string) }</span>},
+                "address":    {get: func(v *models.PublisherVersion) any <span class="cov0" title="0">{ return v.Address }</span>, set: func(v *models.PublisherVersion, val any) <span class="cov0" title="0">{ v.Address = val.(string) }</span>},
+                "website":    {get: func(v *models.PublisherVersion) any <span class="cov0" title="0">{ return v.Website }</span>, set: func(v *models.PublisherVersion, val any) <span class="cov0" title="0">{ v.Website = val.(url.URL) }</span>},
+                "notes":      {get: func(v *models.PublisherVersion) any <span class="cov0" title="0">{ return v.Notes }</span>, set: func(v *models.PublisherVersion, val any) <span class="cov0" title="0">{ v.Notes = val.(string) }</span>},
+                "properties": {get: func(v *models.PublisherVersion) any <span class="cov0" title="0">{ return v.Properties }</span>, set: func(v *models.PublisherVersion, val any) <span class="cov0" title="0">{ v.Properties = val.([]modelcore.Property) }</span>},
+                "tags":       {get: func(v *models.PublisherVersion) any <span class="cov0" title="0">{ return v.Tags }</span>, set: func(v *models.PublisherVersion, val any) <span class="cov0" title="0">{ v.Tags = val.([]modelcore.Tag) }</span>},
+        },
+}
+
+// EnsurePublisherVersioningIndexes creates the indexes publisher version queries rely on. Safe to
+// call on every startup.
+func EnsurePublisherVersioningIndexes(c context.Context) error <span class="cov7" title="10">{
+        return publisherVersioning.ensureIndexes(c)
+}</span>
+
+func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersionVO <span class="cov9" title="16">{
+        return &amp;vo.PublisherVersionVO{
+                ID: version.ID, RecordID: version.RecordID, Version: version.Version,
+                Name: version.Name, Address: version.Address, Website: version.Website, Notes: version.Notes,
+                Properties: modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:       modelcoreutil.FromTagModels(version.Tags),
+                VersionLifecycleVO: vo.VersionLifecycleVO{
+                        State: vo.VersionState(version.State), BaseVersion: version.BaseVersion,
+                        SubmittedBy: version.SubmittedBy, SubmittedAt: version.SubmittedAt,
+                        ReviewedBy: version.ReviewedBy, ReviewedAt: version.ReviewedAt,
+                        ReviewNote: version.ReviewNote, ResultingVersion: version.ResultingVersion,
+                },
+        }
+}</span>
+
+func publisherVersionFields(publisher *vo.PublisherVO) models.PublisherVersion <span class="cov9" title="17">{
+        return models.PublisherVersion{
+                Name: publisher.Name, Address: publisher.Address, Website: publisher.Website, Notes: publisher.Notes,
+                Properties: modelcoreutil.ToPropertyModels(publisher.Properties),
+                Tags:       modelcoreutil.ToTagModels(publisher.Tags),
+        }
+}</span>
+
+func flattenPublisher(meta *models.EntityMeta, version *models.PublisherVersion) *vo.PublisherVO <span class="cov7" title="9">{
+        return &amp;vo.PublisherVO{
+                ID: meta.ID, Name: version.Name, Address: version.Address, Website: version.Website, Notes: version.Notes,
+                Properties: modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:       modelcoreutil.FromTagModels(version.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
+                        UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+                        DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
+                },
+        }
+}</span>
+
+// AddPublisher creates a publisher's meta record and its first (live) version.
+func AddPublisher(c context.Context, publisher *vo.PublisherVO) (*string, error) <span class="cov7" title="9">{
+        version := publisherVersionFields(publisher)
+        return publisherVersioning.addEntity(c, &amp;version, publisher.CreatedBy)
+}</span>
+
+// GetPublisher returns the flattened view of a publisher - matching the shape this function
+// returned before meta/version were split.
+func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov7" title="9">{
+        meta, err := publisherVersioning.getMeta(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov7" title="9">if meta == nil </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov7" title="9">version, err := publisherVersioning.getVersion(c, id, meta.CurrentVersion)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov7" title="9">if version == nil </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov7" title="9">return flattenPublisher(meta, version), nil</span>
+}
+
+// UpdatePublisher creates a new version of the publisher rather than mutating in place - state
+// VersionStateLive goes current immediately (editor/admin); VersionStateSubmitted leaves the
+// current pointer untouched (submitter).
+func UpdatePublisher(c context.Context, id string, publisher *vo.PublisherVO, state models.VersionState) (*vo.PublisherVersionVO, error) <span class="cov6" title="7">{
+        version := publisherVersionFields(publisher)
+        result, err := publisherVersioning.createVersion(c, id, &amp;version, state, publisher.UpdatedBy)
+        if err != nil || result == nil </span><span class="cov1" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov6" title="6">return publisherVersionToVO(result), nil</span>
+}
+
+// ListPublisherVersions returns every version of a publisher, newest first.
+func ListPublisherVersions(c context.Context, id string) ([]*vo.PublisherVersionVO, error) <span class="cov1" title="1">{
+        versions, err := publisherVersioning.listVersions(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">vos := make([]*vo.PublisherVersionVO, 0, len(versions))
+        for _, v := range versions </span><span class="cov1" title="1">{
+                vos = append(vos, publisherVersionToVO(v))
+        }</span>
+        <span class="cov1" title="1">return vos, nil</span>
+}
+
+// GetPublisherVersion returns one version's full snapshot, regardless of whether it's current.
+func GetPublisherVersion(c context.Context, id string, version int) (*vo.PublisherVersionVO, error) <span class="cov5" title="5">{
+        result, err := publisherVersioning.getVersion(c, id, version)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov5" title="5">return publisherVersionToVO(result), nil</span>
+}
+
+// AcceptPublisherVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.
+func AcceptPublisherVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string) (*vo.PublisherVersionVO, []string, error) <span class="cov1" title="1">{
+        result, conflicts, err := publisherVersioning.acceptVersion(c, id, version, selectedFields, reviewedBy, reviewNote)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, conflicts, err
+        }</span>
+        <span class="cov1" title="1">return publisherVersionToVO(result), conflicts, nil</span>
+}
+
+// RejectPublisherVersion marks a submitted version rejected.
+func RejectPublisherVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error <span class="cov1" title="1">{
+        return publisherVersioning.rejectVersion(c, id, version, reviewedBy, reviewNote)
+}</span>
+
+// RetractPublisherVersion lets the original submitter withdraw their own pending submission.
+func RetractPublisherVersion(c context.Context, id string, version int, submitterID string) (*vo.PublisherVersionVO, error) <span class="cov1" title="1">{
+        result, err := publisherVersioning.retractVersion(c, id, version, submitterID)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">return publisherVersionToVO(result), nil</span>
+}
+
+// SetCurrentPublisherVersion rolls a publisher back (or forward) to an arbitrary existing version.
+func SetCurrentPublisherVersion(c context.Context, id string, version int) (*vo.PublisherVersionVO, error) <span class="cov1" title="1">{
+        result, err := publisherVersioning.setCurrentVersion(c, id, version)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">return publisherVersionToVO(result), nil</span>
+}
+
+// CountSubmittedPublisherVersionsBySubmitter counts a submitter's currently-pending versions.
+func CountSubmittedPublisherVersionsBySubmitter(c context.Context, submittedBy string) (int64, error) <span class="cov0" title="0">{
+        return publisherVersioning.countSubmittedBySubmitter(c, submittedBy)
+}</span>
+
+// QueryPublishers lists the current (live) version of every publisher matching params.
+func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) <span class="cov0" title="0">{
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        metas, err := database.Query[models.EntityMeta](publisherMetaCollection, filter, sort, projection, params.Start, params.Limit)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">vos := make([]*vo.PublisherVO, 0, len(metas))
+        for _, meta := range metas </span><span class="cov0" title="0">{
+                version, err := publisherVersioning.getVersion(c, meta.ID, meta.CurrentVersion)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov0" title="0">if version == nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, flattenPublisher(meta, version))</span>
+        }
+        <span class="cov0" title="0">return vos, nil</span>
+}
+
+// CreateSubmittedPublisherVersion creates a submitted version stamped with a caller-supplied
+// submittedBy/submittedAt - for migrating a pre-versioning proposed_changes entry into the
+// version model, preserving the original proposal's submission audit (see
+// data.CreateSubmittedVolumeVersion, the bespoke original this mirrors).
+func CreateSubmittedPublisherVersion(c context.Context, id string, publisher *vo.PublisherVO, submittedBy string, submittedAt time.Time) (*vo.PublisherVersionVO, error) <span class="cov1" title="1">{
+        version := publisherVersionFields(publisher)
+        result, err := publisherVersioning.createVersionWithSubmission(c, id, &amp;version, models.VersionStateSubmitted, submittedBy, submittedAt)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">return publisherVersionToVO(result), nil</span>
+}
+
+// MigratePublishers backfills every existing "publishers" document (the pre-versioning flat
+// model) into a meta record plus a single live version, per design.md's Migration Plan.
+// Idempotent - see migrateEntity's doc comment.
+func MigratePublishers(c context.Context) (int, error) <span class="cov4" title="3">{
+        return migrateEntity(c, migrationConfig[models.Publisher, models.PublisherVersion]{
+                oldCollection: "publishers",
+                versioning:    publisherVersioning,
+                id:            func(p *models.Publisher) string </span><span class="cov5" title="5">{ return p.ID }</span>,
+                auditable:     func(p *models.Publisher) modelcore.Auditable <span class="cov3" title="2">{ return p.Auditable }</span>,
+                toVersion: func(p *models.Publisher) models.PublisherVersion <span class="cov3" title="2">{
+                        return models.PublisherVersion{
+                                Name: p.Name, Address: p.Address, Website: p.Website, Notes: p.Notes,
+                                Properties: p.Properties, Tags: p.Tags,
+                        }
+                }</span>,
+        })
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package data
 
 import (
         "context"
@@ -757,219 +1537,441 @@ func QueryReviews(c context.Context, params apiutil.QueryParams) ([]*vo.ReviewVO
 }
 </pre>
 		
-		<pre class="file" id="file5" style="display: none">package data
-
-import (
-        "context"
-        "fmt"
-        "time"
-
-        "github.com/sweetrpg/api-core.go/tracing"
-        apiutil "github.com/sweetrpg/api-core.go/util"
-        "github.com/sweetrpg/catalog-objects.go/models"
-        "github.com/sweetrpg/catalog-objects.go/vo"
-        "github.com/sweetrpg/common.go/logging"
-        modelcore "github.com/sweetrpg/model-core.go/models"
-        modelcoreutil "github.com/sweetrpg/model-core.go/util"
-        modelcorevo "github.com/sweetrpg/model-core.go/vo"
-        "github.com/sweetrpg/mongodb.go/database"
-        "go.mongodb.org/mongo-driver/bson"
-        "go.opentelemetry.io/otel"
-        "go.opentelemetry.io/otel/attribute"
-        oteltrace "go.opentelemetry.io/otel/trace"
-)
-
-func GetStudio(c context.Context, id string) (*vo.StudioVO, error) <span class="cov10" title="4">{
-        _, span := otel.Tracer("studio").Start(c, "db-get-studio", oteltrace.WithAttributes(attribute.String("id", id)))
-        results, err := database.Query[models.Studio]("studios", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
-        span.End()
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for Studio: %v", err))
-                return nil, err
-        }</span>
-
-        <span class="cov10" title="4">if len(results) == 0 </span><span class="cov1" title="1">{
-                logging.Logger.Info(fmt.Sprintf("Studio not found for ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov8" title="3">return studioModelToVO(results[0]), nil</span>
-}
-
-func studioModelToVO(model *models.Studio) *vo.StudioVO <span class="cov8" title="3">{
-        return &amp;vo.StudioVO{
-                ID:         model.ID,
-                Name:       model.Name,
-                Website:    model.Website,
-                Notes:      model.Notes,
-                Properties: modelcoreutil.FromPropertyModels(model.Properties),
-                Tags:       modelcoreutil.FromTagModels(model.Tags),
-                AuditableVO: modelcorevo.AuditableVO{
-                        CreatedAt: model.CreatedAt,
-                        CreatedBy: model.CreatedBy,
-                        UpdatedAt: model.UpdatedAt,
-                        UpdatedBy: model.UpdatedBy,
-                        DeletedAt: model.DeletedAt,
-                        DeletedBy: model.DeletedBy,
-                },
-        }
-}</span>
-
-// UpdateStudio merges the provided fields into the existing studio and writes it, mirroring
-// UpdatePublisher's raw-marshal $set approach.
-func UpdateStudio(c context.Context, id string, studio *vo.StudioVO) (*vo.StudioVO, error) <span class="cov5" title="2">{
-        _, span := otel.Tracer("studio").Start(c, "db-update-studio", oteltrace.WithAttributes(attribute.String("id", id)))
-        defer span.End()
-
-        existing, err := GetStudio(c, id)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while looking up existing Studio for update", "id", id, "error", err)
-                return nil, err
-        }</span>
-        <span class="cov5" title="2">if existing == nil </span><span class="cov1" title="1">{
-                logging.Logger.Info(fmt.Sprintf("Studio not found for update, ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov1" title="1">model := models.Studio{
-                ID:         id,
-                Name:       studio.Name,
-                Website:    studio.Website,
-                Notes:      studio.Notes,
-                Properties: modelcoreutil.ToPropertyModels(studio.Properties),
-                Tags:       modelcoreutil.ToTagModels(studio.Tags),
-                Auditable: modelcore.Auditable{
-                        CreatedAt: existing.CreatedAt,
-                        CreatedBy: existing.CreatedBy,
-                        UpdatedAt: time.Now(),
-                        UpdatedBy: studio.UpdatedBy,
-                        DeletedAt: nil,
-                        DeletedBy: nil,
-                },
-        }
-
-        data, err := bson.Marshal(model)
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while preparing Studio document for update", "error", err)
-                return nil, err
-        }</span>
-        <span class="cov1" title="1">var update bson.D
-        if err := bson.Unmarshal(data, &amp;update); err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while unmarshaling Studio document for update", "error", err)
-                return nil, err
-        }</span>
-
-        <span class="cov1" title="1">result, err := database.Db.Collection("studios").UpdateOne(
-                c,
-                bson.D{{Key: "_id", Value: id}},
-                bson.D{{Key: "$set", Value: update}},
-        )
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error("Error while updating Studio in database", "id", id, "error", err)
-                return nil, err
-        }</span>
-        <span class="cov1" title="1">if result.MatchedCount == 0 </span><span class="cov0" title="0">{
-                logging.Logger.Info(fmt.Sprintf("Studio not found for update, ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov1" title="1">return GetStudio(c, id)</span>
-}
-
-func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) <span class="cov0" title="0">{
-        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
-        filter, sort, projection := apiutil.ConvertQueryParams(params)
-        models, err := database.Query[models.Studio]("studios", filter, sort, projection, params.Start, params.Limit)
-        span.End()
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for Studios: %v", err))
-                return nil, err
-        }</span>
-
-        <span class="cov0" title="0">vos := make([]*vo.StudioVO, 0, len(models))
-        for _, model := range models </span><span class="cov0" title="0">{
-                vos = append(vos, studioModelToVO(model))
-        }</span>
-
-        <span class="cov0" title="0">return vos, nil</span>
-}
-</pre>
-		
 		<pre class="file" id="file6" style="display: none">package data
 
 import (
         "context"
-        "fmt"
+        "net/url"
+        "time"
 
-        "github.com/sweetrpg/api-core.go/tracing"
         apiutil "github.com/sweetrpg/api-core.go/util"
         "github.com/sweetrpg/catalog-objects.go/models"
         "github.com/sweetrpg/catalog-objects.go/vo"
-        "github.com/sweetrpg/common.go/logging"
+        modelcore "github.com/sweetrpg/model-core.go/models"
         modelcoreutil "github.com/sweetrpg/model-core.go/util"
         modelcorevo "github.com/sweetrpg/model-core.go/vo"
         "github.com/sweetrpg/mongodb.go/database"
-        "go.mongodb.org/mongo-driver/bson"
-        "go.opentelemetry.io/otel"
-        "go.opentelemetry.io/otel/attribute"
-        oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func GetSystem(c context.Context, id string) (*vo.SystemVO, error) <span class="cov0" title="0">{
-        _, span := otel.Tracer("system").Start(c, "db-get-system", oteltrace.WithAttributes(attribute.String("id", id)))
-        results, err := database.Query[models.System]("systems", bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
-        span.End()
-        if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for System: %v", err))
-                return nil, err
-        }</span>
+const (
+        studioMetaCollection    = "studios_meta"
+        studioVersionCollection = "studios_versions"
+)
 
-        <span class="cov0" title="0">if len(results) == 0 </span><span class="cov0" title="0">{
-                logging.Logger.Info(fmt.Sprintf("System not found for ID: %s", id))
-                return nil, nil
-        }</span>
-
-        <span class="cov0" title="0">return systemModelToVO(results[0]), nil</span>
+var studioVersioning = entityVersioningConfig[models.StudioVersion]{
+        metaCollection:    studioMetaCollection,
+        versionCollection: studioVersionCollection,
+        typeName:          "studio",
+        lifecycle:         func(v *models.StudioVersion) *models.VersionLifecycle <span class="cov10" title="6">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.StudioVersion, id string) <span class="cov9" title="5">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.StudioVersion, id string) <span class="cov9" title="5">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.StudioVersion, n int) <span class="cov9" title="5">{ v.Version = n }</span>,
+        fields: map[string]entityFieldAccessor[models.StudioVersion]{
+                "name":       {get: func(v *models.StudioVersion) any <span class="cov0" title="0">{ return v.Name }</span>, set: func(v *models.StudioVersion, val any) <span class="cov0" title="0">{ v.Name = val.(string) }</span>},
+                "website":    {get: func(v *models.StudioVersion) any <span class="cov0" title="0">{ return v.Website }</span>, set: func(v *models.StudioVersion, val any) <span class="cov0" title="0">{ v.Website = val.(url.URL) }</span>},
+                "notes":      {get: func(v *models.StudioVersion) any <span class="cov0" title="0">{ return v.Notes }</span>, set: func(v *models.StudioVersion, val any) <span class="cov0" title="0">{ v.Notes = val.(string) }</span>},
+                "properties": {get: func(v *models.StudioVersion) any <span class="cov0" title="0">{ return v.Properties }</span>, set: func(v *models.StudioVersion, val any) <span class="cov0" title="0">{ v.Properties = val.([]modelcore.Property) }</span>},
+                "tags":       {get: func(v *models.StudioVersion) any <span class="cov0" title="0">{ return v.Tags }</span>, set: func(v *models.StudioVersion, val any) <span class="cov0" title="0">{ v.Tags = val.([]modelcore.Tag) }</span>},
+        },
 }
 
-func systemModelToVO(model *models.System) *vo.SystemVO <span class="cov0" title="0">{
-        return &amp;vo.SystemVO{
-                ID:         model.ID,
-                GameSystem: model.GameSystem,
-                Edition:    model.Edition,
-                Notes:      model.Notes,
-                Tags:       modelcoreutil.FromTagModels(model.Tags),
-                AuditableVO: modelcorevo.AuditableVO{
-                        CreatedAt: model.CreatedAt,
-                        CreatedBy: model.CreatedBy,
-                        UpdatedAt: model.UpdatedAt,
-                        UpdatedBy: model.UpdatedBy,
-                        DeletedAt: model.DeletedAt,
-                        DeletedBy: model.DeletedBy,
+// EnsureStudioVersioningIndexes creates the indexes studio version queries rely on. Safe to call
+// on every startup.
+func EnsureStudioVersioningIndexes(c context.Context) error <span class="cov6" title="3">{
+        return studioVersioning.ensureIndexes(c)
+}</span>
+
+func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO <span class="cov6" title="3">{
+        return &amp;vo.StudioVersionVO{
+                ID: version.ID, RecordID: version.RecordID, Version: version.Version,
+                Name: version.Name, Website: version.Website, Notes: version.Notes,
+                Properties: modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:       modelcoreutil.FromTagModels(version.Tags),
+                VersionLifecycleVO: vo.VersionLifecycleVO{
+                        State: vo.VersionState(version.State), BaseVersion: version.BaseVersion,
+                        SubmittedBy: version.SubmittedBy, SubmittedAt: version.SubmittedAt,
+                        ReviewedBy: version.ReviewedBy, ReviewedAt: version.ReviewedAt,
+                        ReviewNote: version.ReviewNote, ResultingVersion: version.ResultingVersion,
                 },
         }
 }</span>
 
-func QuerySystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO, error) <span class="cov0" title="0">{
-        span := tracing.BuildSpanWithParams(c, "contributions", "db-get-contributions", params)
-        filter, sort, projection := apiutil.ConvertQueryParams(params)
-        models, err := database.Query[models.System]("systems", filter, sort, projection, params.Start, params.Limit)
-        span.End()
+func studioVersionFields(studio *vo.StudioVO) models.StudioVersion <span class="cov10" title="6">{
+        return models.StudioVersion{
+                Name: studio.Name, Website: studio.Website, Notes: studio.Notes,
+                Properties: modelcoreutil.ToPropertyModels(studio.Properties),
+                Tags:       modelcoreutil.ToTagModels(studio.Tags),
+        }
+}</span>
+
+func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.StudioVO <span class="cov4" title="2">{
+        return &amp;vo.StudioVO{
+                ID: meta.ID, Name: version.Name, Website: version.Website, Notes: version.Notes,
+                Properties: modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:       modelcoreutil.FromTagModels(version.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
+                        UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+                        DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
+                },
+        }
+}</span>
+
+// AddStudio creates a studio's meta record and its first (live) version.
+func AddStudio(c context.Context, studio *vo.StudioVO) (*string, error) <span class="cov6" title="3">{
+        version := studioVersionFields(studio)
+        return studioVersioning.addEntity(c, &amp;version, studio.CreatedBy)
+}</span>
+
+// GetStudio returns the flattened view of a studio.
+func GetStudio(c context.Context, id string) (*vo.StudioVO, error) <span class="cov4" title="2">{
+        meta, err := studioVersioning.getMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
-                logging.Logger.Error(fmt.Sprintf("Error while querying database for Systems: %v", err))
                 return nil, err
         }</span>
-
-        <span class="cov0" title="0">vos := make([]*vo.SystemVO, 0, len(models))
-        for _, model := range models </span><span class="cov0" title="0">{
-                vos = append(vos, systemModelToVO(model))
+        <span class="cov4" title="2">if meta == nil </span><span class="cov0" title="0">{
+                return nil, nil
         }</span>
+        <span class="cov4" title="2">version, err := studioVersioning.getVersion(c, id, meta.CurrentVersion)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov4" title="2">if version == nil </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov4" title="2">return flattenStudio(meta, version), nil</span>
+}
 
+// UpdateStudio creates a new version of the studio rather than mutating in place.
+func UpdateStudio(c context.Context, id string, studio *vo.StudioVO, state models.VersionState) (*vo.StudioVersionVO, error) <span class="cov6" title="3">{
+        version := studioVersionFields(studio)
+        result, err := studioVersioning.createVersion(c, id, &amp;version, state, studio.UpdatedBy)
+        if err != nil || result == nil </span><span class="cov1" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov4" title="2">return studioVersionToVO(result), nil</span>
+}
+
+// ListStudioVersions returns every version of a studio, newest first.
+func ListStudioVersions(c context.Context, id string) ([]*vo.StudioVersionVO, error) <span class="cov0" title="0">{
+        versions, err := studioVersioning.listVersions(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">vos := make([]*vo.StudioVersionVO, 0, len(versions))
+        for _, v := range versions </span><span class="cov0" title="0">{
+                vos = append(vos, studioVersionToVO(v))
+        }</span>
         <span class="cov0" title="0">return vos, nil</span>
+}
+
+// GetStudioVersion returns one version's full snapshot.
+func GetStudioVersion(c context.Context, id string, version int) (*vo.StudioVersionVO, error) <span class="cov0" title="0">{
+        result, err := studioVersioning.getVersion(c, id, version)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return studioVersionToVO(result), nil</span>
+}
+
+// AcceptStudioVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.
+func AcceptStudioVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string) (*vo.StudioVersionVO, []string, error) <span class="cov1" title="1">{
+        result, conflicts, err := studioVersioning.acceptVersion(c, id, version, selectedFields, reviewedBy, reviewNote)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, conflicts, err
+        }</span>
+        <span class="cov1" title="1">return studioVersionToVO(result), conflicts, nil</span>
+}
+
+// RejectStudioVersion marks a submitted version rejected.
+func RejectStudioVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error <span class="cov0" title="0">{
+        return studioVersioning.rejectVersion(c, id, version, reviewedBy, reviewNote)
+}</span>
+
+// RetractStudioVersion lets the original submitter withdraw their own pending submission.
+func RetractStudioVersion(c context.Context, id string, version int, submitterID string) (*vo.StudioVersionVO, error) <span class="cov0" title="0">{
+        result, err := studioVersioning.retractVersion(c, id, version, submitterID)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return studioVersionToVO(result), nil</span>
+}
+
+// SetCurrentStudioVersion rolls a studio back (or forward) to an arbitrary existing version.
+func SetCurrentStudioVersion(c context.Context, id string, version int) (*vo.StudioVersionVO, error) <span class="cov0" title="0">{
+        result, err := studioVersioning.setCurrentVersion(c, id, version)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return studioVersionToVO(result), nil</span>
+}
+
+// CountSubmittedStudioVersionsBySubmitter counts a submitter's currently-pending versions.
+func CountSubmittedStudioVersionsBySubmitter(c context.Context, submittedBy string) (int64, error) <span class="cov0" title="0">{
+        return studioVersioning.countSubmittedBySubmitter(c, submittedBy)
+}</span>
+
+// QueryStudios lists the current (live) version of every studio matching params.
+func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) <span class="cov0" title="0">{
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        metas, err := database.Query[models.EntityMeta](studioMetaCollection, filter, sort, projection, params.Start, params.Limit)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">vos := make([]*vo.StudioVO, 0, len(metas))
+        for _, meta := range metas </span><span class="cov0" title="0">{
+                version, err := studioVersioning.getVersion(c, meta.ID, meta.CurrentVersion)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov0" title="0">if version == nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, flattenStudio(meta, version))</span>
+        }
+        <span class="cov0" title="0">return vos, nil</span>
+}
+
+// CreateSubmittedStudioVersion creates a submitted version stamped with a caller-supplied
+// submittedBy/submittedAt - see CreateSubmittedPublisherVersion's doc comment.
+func CreateSubmittedStudioVersion(c context.Context, id string, studio *vo.StudioVO, submittedBy string, submittedAt time.Time) (*vo.StudioVersionVO, error) <span class="cov0" title="0">{
+        version := studioVersionFields(studio)
+        result, err := studioVersioning.createVersionWithSubmission(c, id, &amp;version, models.VersionStateSubmitted, submittedBy, submittedAt)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return studioVersionToVO(result), nil</span>
+}
+
+// MigrateStudios backfills every existing "studios" document into a meta record plus a single
+// live version - see MigratePublishers' doc comment.
+func MigrateStudios(c context.Context) (int, error) <span class="cov0" title="0">{
+        return migrateEntity(c, migrationConfig[models.Studio, models.StudioVersion]{
+                oldCollection: "studios",
+                versioning:    studioVersioning,
+                id:            func(s *models.Studio) string </span><span class="cov0" title="0">{ return s.ID }</span>,
+                auditable:     func(s *models.Studio) modelcore.Auditable <span class="cov0" title="0">{ return s.Auditable }</span>,
+                toVersion: func(s *models.Studio) models.StudioVersion <span class="cov0" title="0">{
+                        return models.StudioVersion{
+                                Name: s.Name, Website: s.Website, Notes: s.Notes,
+                                Properties: s.Properties, Tags: s.Tags,
+                        }
+                }</span>,
+        })
 }
 </pre>
 		
 		<pre class="file" id="file7" style="display: none">package data
+
+import (
+        "context"
+
+        apiutil "github.com/sweetrpg/api-core.go/util"
+        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-objects.go/vo"
+        modelcore "github.com/sweetrpg/model-core.go/models"
+        modelcoreutil "github.com/sweetrpg/model-core.go/util"
+        modelcorevo "github.com/sweetrpg/model-core.go/vo"
+        "github.com/sweetrpg/mongodb.go/database"
+)
+
+const (
+        systemMetaCollection    = "systems_meta"
+        systemVersionCollection = "systems_versions"
+)
+
+// systemVersioning gives system the same meta+version model as the other four generic types,
+// even though system has no write path today (see proposal.md's Impact section) - task 7.5
+// explicitly repeats task groups 1-4 (model/data-access/API endpoints/SDK) for system, giving it
+// a write path for the first time as part of this change; only catalog-web pages are out of
+// scope, per design.md's Non-Goals.
+var systemVersioning = entityVersioningConfig[models.SystemVersion]{
+        metaCollection:    systemMetaCollection,
+        versionCollection: systemVersionCollection,
+        typeName:          "system",
+        lifecycle:         func(v *models.SystemVersion) *models.VersionLifecycle <span class="cov0" title="0">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.SystemVersion, id string) <span class="cov0" title="0">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.SystemVersion, id string) <span class="cov0" title="0">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.SystemVersion, n int) <span class="cov0" title="0">{ v.Version = n }</span>,
+        fields: map[string]entityFieldAccessor[models.SystemVersion]{
+                "game_system": {get: func(v *models.SystemVersion) any <span class="cov0" title="0">{ return v.GameSystem }</span>, set: func(v *models.SystemVersion, val any) <span class="cov0" title="0">{ v.GameSystem = val.(string) }</span>},
+                "edition":     {get: func(v *models.SystemVersion) any <span class="cov0" title="0">{ return v.Edition }</span>, set: func(v *models.SystemVersion, val any) <span class="cov0" title="0">{ v.Edition = val.(string) }</span>},
+                "notes":       {get: func(v *models.SystemVersion) any <span class="cov0" title="0">{ return v.Notes }</span>, set: func(v *models.SystemVersion, val any) <span class="cov0" title="0">{ v.Notes = val.(string) }</span>},
+                "tags":        {get: func(v *models.SystemVersion) any <span class="cov0" title="0">{ return v.Tags }</span>, set: func(v *models.SystemVersion, val any) <span class="cov0" title="0">{ v.Tags = val.([]modelcore.Tag) }</span>},
+        },
+}
+
+// EnsureSystemVersioningIndexes creates the indexes system version queries rely on. Safe to call
+// on every startup.
+func EnsureSystemVersioningIndexes(c context.Context) error <span class="cov0" title="0">{
+        return systemVersioning.ensureIndexes(c)
+}</span>
+
+func systemVersionToVO(version *models.SystemVersion) *vo.SystemVersionVO <span class="cov0" title="0">{
+        return &amp;vo.SystemVersionVO{
+                ID: version.ID, RecordID: version.RecordID, Version: version.Version,
+                GameSystem: version.GameSystem, Edition: version.Edition, Notes: version.Notes,
+                Tags: modelcoreutil.FromTagModels(version.Tags),
+                VersionLifecycleVO: vo.VersionLifecycleVO{
+                        State: vo.VersionState(version.State), BaseVersion: version.BaseVersion,
+                        SubmittedBy: version.SubmittedBy, SubmittedAt: version.SubmittedAt,
+                        ReviewedBy: version.ReviewedBy, ReviewedAt: version.ReviewedAt,
+                        ReviewNote: version.ReviewNote, ResultingVersion: version.ResultingVersion,
+                },
+        }
+}</span>
+
+func systemVersionFields(system *vo.SystemVO) models.SystemVersion <span class="cov0" title="0">{
+        return models.SystemVersion{
+                GameSystem: system.GameSystem, Edition: system.Edition, Notes: system.Notes,
+                Tags: modelcoreutil.ToTagModels(system.Tags),
+        }
+}</span>
+
+func flattenSystem(meta *models.EntityMeta, version *models.SystemVersion) *vo.SystemVO <span class="cov0" title="0">{
+        return &amp;vo.SystemVO{
+                ID: meta.ID, GameSystem: version.GameSystem, Edition: version.Edition, Notes: version.Notes,
+                Tags: modelcoreutil.FromTagModels(version.Tags),
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
+                        UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+                        DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
+                },
+        }
+}</span>
+
+// AddSystem creates a system's meta record and its first (live) version.
+func AddSystem(c context.Context, system *vo.SystemVO) (*string, error) <span class="cov0" title="0">{
+        version := systemVersionFields(system)
+        return systemVersioning.addEntity(c, &amp;version, system.CreatedBy)
+}</span>
+
+// GetSystem returns the flattened view of a system.
+func GetSystem(c context.Context, id string) (*vo.SystemVO, error) <span class="cov0" title="0">{
+        meta, err := systemVersioning.getMeta(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">if meta == nil </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov0" title="0">version, err := systemVersioning.getVersion(c, id, meta.CurrentVersion)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">if version == nil </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov0" title="0">return flattenSystem(meta, version), nil</span>
+}
+
+// UpdateSystem creates a new version of the system rather than mutating in place.
+func UpdateSystem(c context.Context, id string, system *vo.SystemVO, state models.VersionState) (*vo.SystemVersionVO, error) <span class="cov0" title="0">{
+        version := systemVersionFields(system)
+        result, err := systemVersioning.createVersion(c, id, &amp;version, state, system.UpdatedBy)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return systemVersionToVO(result), nil</span>
+}
+
+// ListSystemVersions returns every version of a system, newest first.
+func ListSystemVersions(c context.Context, id string) ([]*vo.SystemVersionVO, error) <span class="cov0" title="0">{
+        versions, err := systemVersioning.listVersions(c, id)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">vos := make([]*vo.SystemVersionVO, 0, len(versions))
+        for _, v := range versions </span><span class="cov0" title="0">{
+                vos = append(vos, systemVersionToVO(v))
+        }</span>
+        <span class="cov0" title="0">return vos, nil</span>
+}
+
+// GetSystemVersion returns one version's full snapshot.
+func GetSystemVersion(c context.Context, id string, version int) (*vo.SystemVersionVO, error) <span class="cov0" title="0">{
+        result, err := systemVersioning.getVersion(c, id, version)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return systemVersionToVO(result), nil</span>
+}
+
+// AcceptSystemVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.
+func AcceptSystemVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string) (*vo.SystemVersionVO, []string, error) <span class="cov0" title="0">{
+        result, conflicts, err := systemVersioning.acceptVersion(c, id, version, selectedFields, reviewedBy, reviewNote)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, conflicts, err
+        }</span>
+        <span class="cov0" title="0">return systemVersionToVO(result), conflicts, nil</span>
+}
+
+// RejectSystemVersion marks a submitted version rejected.
+func RejectSystemVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error <span class="cov0" title="0">{
+        return systemVersioning.rejectVersion(c, id, version, reviewedBy, reviewNote)
+}</span>
+
+// RetractSystemVersion lets the original submitter withdraw their own pending submission.
+func RetractSystemVersion(c context.Context, id string, version int, submitterID string) (*vo.SystemVersionVO, error) <span class="cov0" title="0">{
+        result, err := systemVersioning.retractVersion(c, id, version, submitterID)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return systemVersionToVO(result), nil</span>
+}
+
+// SetCurrentSystemVersion rolls a system back (or forward) to an arbitrary existing version.
+func SetCurrentSystemVersion(c context.Context, id string, version int) (*vo.SystemVersionVO, error) <span class="cov0" title="0">{
+        result, err := systemVersioning.setCurrentVersion(c, id, version)
+        if err != nil || result == nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return systemVersionToVO(result), nil</span>
+}
+
+// CountSubmittedSystemVersionsBySubmitter counts a submitter's currently-pending versions.
+func CountSubmittedSystemVersionsBySubmitter(c context.Context, submittedBy string) (int64, error) <span class="cov0" title="0">{
+        return systemVersioning.countSubmittedBySubmitter(c, submittedBy)
+}</span>
+
+// QuerySystems lists the current (live) version of every system matching params.
+func QuerySystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO, error) <span class="cov0" title="0">{
+        filter, sort, projection := apiutil.ConvertQueryParams(params)
+        metas, err := database.Query[models.EntityMeta](systemMetaCollection, filter, sort, projection, params.Start, params.Limit)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">vos := make([]*vo.SystemVO, 0, len(metas))
+        for _, meta := range metas </span><span class="cov0" title="0">{
+                version, err := systemVersioning.getVersion(c, meta.ID, meta.CurrentVersion)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov0" title="0">if version == nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">vos = append(vos, flattenSystem(meta, version))</span>
+        }
+        <span class="cov0" title="0">return vos, nil</span>
+}
+
+// MigrateSystems backfills every existing "systems" document into a meta record plus a single
+// live version - see MigratePublishers' doc comment. System never had a write path before this
+// change, so there's no pending-proposal migration counterpart to run alongside this.
+func MigrateSystems(c context.Context) (int, error) <span class="cov0" title="0">{
+        return migrateEntity(c, migrationConfig[models.System, models.SystemVersion]{
+                oldCollection: "systems",
+                versioning:    systemVersioning,
+                id:            func(s *models.System) string </span><span class="cov0" title="0">{ return s.ID }</span>,
+                auditable:     func(s *models.System) modelcore.Auditable <span class="cov0" title="0">{ return s.Auditable }</span>,
+                toVersion: func(s *models.System) models.SystemVersion <span class="cov0" title="0">{
+                        return models.SystemVersion{GameSystem: s.GameSystem, Edition: s.Edition, Notes: s.Notes, Tags: s.Tags}
+                }</span>,
+        })
+}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package data
 
 import (
         "context"
@@ -1037,7 +2039,7 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO, state model
         _, span := otel.Tracer("volume").Start(c, "db-update-volume", oteltrace.WithAttributes(attribute.String("id", id)))
         defer span.End()
 
-        return createVolumeVersion(c, id, volume, state, volume.UpdatedBy, time.Now())
+        return createVolumeVersion(c, id, volume, state, volume.UpdatedBy, time.Now(), nil, nil)
 }</span>
 
 // CreateSubmittedVolumeVersion creates a submitted version stamped with a caller-supplied
@@ -1045,10 +2047,19 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO, state model
 // version model - unlike UpdateVolume, which always stamps "now", this preserves the original
 // proposal's submission audit per design.md's Migration Plan.
 func CreateSubmittedVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, submittedBy string, submittedAt time.Time) (*vo.VolumeVersionVO, error) <span class="cov1" title="1">{
-        return createVolumeVersion(c, id, volume, models.VersionStateSubmitted, submittedBy, submittedAt)
+        return createVolumeVersion(c, id, volume, models.VersionStateSubmitted, submittedBy, submittedAt, nil, nil)
 }</span>
 
-func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState, submittedBy string, submittedAt time.Time) (*vo.VolumeVersionVO, error) <span class="cov5" title="15">{
+// CreateSubmittedVolumeVersionWithStagedAssets is CreateSubmittedVolumeVersion's edit-session
+// counterpart (see design.md's "Staged edit-session assets ride on the submitted version as
+// separate staged fields") - volume's own CoverAssetId/SampleAssetIds are expected to still be
+// the current live values (nothing has been promoted yet); stagedCoverAssetId/
+// stagedSampleAssetIds carry the session's not-yet-promoted uploads instead.
+func CreateSubmittedVolumeVersionWithStagedAssets(c context.Context, id string, volume *vo.VolumeVO, submittedBy string, stagedCoverAssetId *string, stagedSampleAssetIds []string) (*vo.VolumeVersionVO, error) <span class="cov0" title="0">{
+        return createVolumeVersion(c, id, volume, models.VersionStateSubmitted, submittedBy, time.Now(), stagedCoverAssetId, stagedSampleAssetIds)
+}</span>
+
+func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState, submittedBy string, submittedAt time.Time, stagedCoverAssetId *string, stagedSampleAssetIds []string) (*vo.VolumeVersionVO, error) <span class="cov5" title="15">{
         meta, err := getVolumeMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 logging.Logger.Error("Error while looking up VolumeMeta for update", "id", id, "error", err)
@@ -1073,6 +2084,8 @@ func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, stat
         newVersion.BaseVersion = &amp;baseVersion
         newVersion.SubmittedBy = submittedBy
         newVersion.SubmittedAt = submittedAt
+        newVersion.StagedCoverAssetId = stagedCoverAssetId
+        newVersion.StagedSampleAssetIds = stagedSampleAssetIds
 
         if _, err := database.Insert[models.VolumeVersion](volumeVersionCollection, newVersion); err != nil </span><span class="cov0" title="0">{
                 logging.Logger.Error("Error while inserting VolumeVersion object", "error", err)
@@ -1232,29 +2245,31 @@ func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *v
         systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds)
 
         return &amp;vo.VolumeVersionVO{
-                ID:               version.ID,
-                RecordID:         version.RecordID,
-                Version:          version.Version,
-                Title:            version.Title,
-                Description:      version.Description,
-                Notes:            version.Notes,
-                Format:           version.Format,
-                CoverAssetId:     version.CoverAssetId,
-                SampleAssetIds:   version.SampleAssetIds,
-                Systems:          systems,
-                Publishers:       publishers,
-                Studios:          studios,
-                Licenses:         licenses,
-                Properties:       modelcoreutil.FromPropertyModels(version.Properties),
-                Tags:             modelcoreutil.FromTagModels(version.Tags),
-                State:            vo.VersionState(version.State),
-                BaseVersion:      version.BaseVersion,
-                SubmittedBy:      version.SubmittedBy,
-                SubmittedAt:      version.SubmittedAt,
-                ReviewedBy:       version.ReviewedBy,
-                ReviewedAt:       version.ReviewedAt,
-                ReviewNote:       version.ReviewNote,
-                ResultingVersion: version.ResultingVersion,
+                ID:                   version.ID,
+                RecordID:             version.RecordID,
+                Version:              version.Version,
+                Title:                version.Title,
+                Description:          version.Description,
+                Notes:                version.Notes,
+                Format:               version.Format,
+                CoverAssetId:         version.CoverAssetId,
+                SampleAssetIds:       version.SampleAssetIds,
+                StagedCoverAssetId:   version.StagedCoverAssetId,
+                StagedSampleAssetIds: version.StagedSampleAssetIds,
+                Systems:              systems,
+                Publishers:           publishers,
+                Studios:              studios,
+                Licenses:             licenses,
+                Properties:           modelcoreutil.FromPropertyModels(version.Properties),
+                Tags:                 modelcoreutil.FromTagModels(version.Tags),
+                State:                vo.VersionState(version.State),
+                BaseVersion:          version.BaseVersion,
+                SubmittedBy:          version.SubmittedBy,
+                SubmittedAt:          version.SubmittedAt,
+                ReviewedBy:           version.ReviewedBy,
+                ReviewedAt:           version.ReviewedAt,
+                ReviewNote:           version.ReviewNote,
+                ResultingVersion:     version.ResultingVersion,
         }
 }</span>
 
@@ -1316,7 +2331,7 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 }
 </pre>
 		
-		<pre class="file" id="file8" style="display: none">package data
+		<pre class="file" id="file9" style="display: none">package data
 
 import (
         "context"
@@ -1395,7 +2410,7 @@ func MigrateVolumes(c context.Context) (int, error) <span class="cov7" title="3"
 }
 </pre>
 		
-		<pre class="file" id="file9" style="display: none">package data
+		<pre class="file" id="file10" style="display: none">package data
 
 import (
         "context"
@@ -1629,7 +2644,14 @@ func intersectFields(fields, selected []string) []string <span class="cov1" titl
 // other outcome (a selected-fields accept, or a full accept with conflicts excluded) derives a new
 // version from the actual current version with only the accepted fields overlaid, promotes that
 // derived version to live, and marks the submitted version partially_accepted, referencing it.
-func AcceptVolumeVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string) (*vo.VolumeVersionVO, []string, error) <span class="cov3" title="3">{
+//
+// liveCoverAssetId/liveSampleAssetIds are an optional override (nil/nil for the common case) -
+// see design.md's "Staged edit-session assets ride on the submitted version as separate staged
+// fields": when the submitted version being accepted carries staged (unpromoted) assets, the
+// caller promotes them via the asset store first and passes the resulting live ids here, so the
+// version that goes live carries live ids rather than the version's own (still-unpromoted)
+// coverAssetId/sampleAssetIds.
+func AcceptVolumeVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string, liveCoverAssetId *string, liveSampleAssetIds []string) (*vo.VolumeVersionVO, []string, error) <span class="cov3" title="3">{
         submitted, err := getVolumeVersion(c, id, version)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, nil, err
@@ -1670,12 +2692,25 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
                 submitted.ReviewedBy = &amp;reviewedBy
                 submitted.ReviewedAt = &amp;now
                 submitted.ReviewNote = reviewNote
-                if err := setVolumeVersionState(c, id, version, bson.D{
+                update := bson.D{
                         {Key: "state", Value: string(models.VersionStateLive)},
                         {Key: "reviewed_by", Value: reviewedBy},
                         {Key: "reviewed_at", Value: now},
                         {Key: "review_note", Value: reviewNote},
-                }); err != nil </span><span class="cov0" title="0">{
+                        {Key: "staged_cover_asset_id", Value: nil},
+                        {Key: "staged_sample_asset_ids", Value: nil},
+                }
+                submitted.StagedCoverAssetId = nil
+                submitted.StagedSampleAssetIds = nil
+                if liveCoverAssetId != nil </span><span class="cov0" title="0">{
+                        update = append(update, bson.E{Key: "cover_asset_id", Value: *liveCoverAssetId})
+                        submitted.CoverAssetId = *liveCoverAssetId
+                }</span>
+                <span class="cov1" title="1">if liveSampleAssetIds != nil </span><span class="cov0" title="0">{
+                        update = append(update, bson.E{Key: "sample_asset_ids", Value: liveSampleAssetIds})
+                        submitted.SampleAssetIds = liveSampleAssetIds
+                }</span>
+                <span class="cov1" title="1">if err := setVolumeVersionState(c, id, version, update); err != nil </span><span class="cov0" title="0">{
                         return nil, nil, err
                 }</span>
                 <span class="cov1" title="1">if err := setVolumeMetaCurrentVersion(c, id, version); err != nil </span><span class="cov0" title="0">{
@@ -1727,8 +2762,16 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
         derived.ReviewedAt = &amp;now
         derived.ReviewNote = reviewNote
         derived.ResultingVersion = nil
+        derived.StagedCoverAssetId = nil
+        derived.StagedSampleAssetIds = nil
+        if liveCoverAssetId != nil </span><span class="cov0" title="0">{
+                derived.CoverAssetId = *liveCoverAssetId
+        }</span>
+        <span class="cov2" title="2">if liveSampleAssetIds != nil </span><span class="cov0" title="0">{
+                derived.SampleAssetIds = liveSampleAssetIds
+        }</span>
 
-        if _, err := database.Insert[models.VolumeVersion](volumeVersionCollection, derived); err != nil </span><span class="cov0" title="0">{
+        <span class="cov2" title="2">if _, err := database.Insert[models.VolumeVersion](volumeVersionCollection, derived); err != nil </span><span class="cov0" title="0">{
                 return nil, nil, err
         }</span>
         <span class="cov2" title="2">if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
@@ -1752,6 +2795,17 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
         return volumeVersionModelToVO(c, &amp;derived), conflicts, nil</span>
 }
 
+// CountSubmittedVolumeVersionsBySubmitter counts a submitter's currently-pending (state:
+// submitted) volume versions - the version-model replacement for
+// proposedchanges.CountPendingBySubmitter, used by submissioncap's cap check.
+func CountSubmittedVolumeVersionsBySubmitter(c context.Context, submittedBy string) (int64, error) <span class="cov0" title="0">{
+        filter := bson.D{
+                {Key: "submitted_by", Value: submittedBy},
+                {Key: "state", Value: string(models.VersionStateSubmitted)},
+        }
+        return database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
+}</span>
+
 // RejectVolumeVersion marks a submitted version rejected, with an optional note. The record's
 // current-version pointer is unchanged.
 func RejectVolumeVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error <span class="cov1" title="1">{
@@ -1773,6 +2827,34 @@ func RejectVolumeVersion(c context.Context, id string, version int, reviewedBy s
                 {Key: "reviewed_at", Value: now},
                 {Key: "review_note", Value: reviewNote},
         })</span>
+}
+
+// RetractVolumeVersion lets the original submitter withdraw their own pending submission,
+// setting its state to withdrawn - see design.md's "Retract/pull-back need a `withdrawn` version
+// state". The record's current-version pointer is unchanged. Returns an error if the version
+// isn't submitted, or wasn't submitted by submitterID.
+func RetractVolumeVersion(c context.Context, id string, version int, submitterID string) (*vo.VolumeVersionVO, error) <span class="cov0" title="0">{
+        submitted, err := getVolumeVersion(c, id, version)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">if submitted == nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("volume %s: version %d not found", id, version)
+        }</span>
+        <span class="cov0" title="0">if submitted.State != models.VersionStateSubmitted </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("volume %s: version %d is not submitted (state: %s)", id, version, submitted.State)
+        }</span>
+        <span class="cov0" title="0">if submitted.SubmittedBy != submitterID </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("volume %s: version %d was not submitted by %s", id, version, submitterID)
+        }</span>
+
+        <span class="cov0" title="0">if err := setVolumeVersionState(c, id, version, bson.D{
+                {Key: "state", Value: string(models.VersionStateWithdrawn)},
+        }); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">submitted.State = models.VersionStateWithdrawn
+        return volumeVersionModelToVO(c, submitted), nil</span>
 }
 
 // SetCurrentVolumeVersion rolls a record back (or forward) to an arbitrary existing version,
