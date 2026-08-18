@@ -1,4 +1,11 @@
 
+## 0.8.0 - 2026-08-18
+
+### Added
+- Add ListPendingStagedAssetIds for reclaim job cross-check
+
+
+
 ## 0.7.0 - 2026-08-18
 
 ### Added
