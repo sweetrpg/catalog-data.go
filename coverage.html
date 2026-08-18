@@ -57,7 +57,7 @@
 				
 				<option value="file0">github.com/sweetrpg/catalog-data.go/data/contribution.go (60.4%)</option>
 				
-				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (56.5%)</option>
+				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (56.6%)</option>
 				
 				<option value="file2">github.com/sweetrpg/catalog-data.go/data/license_versioning.go (26.3%)</option>
 				
@@ -257,6 +257,7 @@ func DeleteContribution(c context.Context, id string) (bool, error) <span class=
 import (
         "context"
         "fmt"
+        "net/url"
         "reflect"
         "sort"
         "time"
@@ -269,6 +270,17 @@ import (
         "go.mongodb.org/mongo-driver/mongo"
         "go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// parseWebsite best-effort parses a VO's plain-string website into the url.URL the models layer
+// still stores (Mongo bson round-trips url.URL fine - only the JSON:API wire format needed the
+// plain-string fix). An unparseable or empty string yields the zero value, matching the
+// server-layer field accessors' same silent-skip-on-parse-error behavior.
+func parseWebsite(s string) url.URL <span class="cov9" title="31">{
+        if u, err := url.Parse(s); err == nil &amp;&amp; u != nil </span><span class="cov9" title="31">{
+                return *u
+        }</span>
+        <span class="cov0" title="0">return url.URL{}</span>
+}
 
 // entityFieldAccessor reads/writes one substantive field on a version record - the version-model
 // counterpart of server/entity_patch.go's entityFieldAccessor, used here for the accept-selected
@@ -298,7 +310,7 @@ type entityVersioningConfig[T any] struct {
         fields map[string]entityFieldAccessor[T]
 }
 
-func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <span class="cov8" title="19">{
+func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <span class="cov8" title="20">{
         _, err := database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
                 Keys:    bson.D{{Key: "record_id", Value: 1}, {Key: "version", Value: 1}},
                 Options: options.Index().SetUnique(true),
@@ -306,49 +318,49 @@ func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <spa
         if err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("%s: create record_id+version index: %w", cfg.typeName, err)
         }</span>
-        <span class="cov8" title="19">_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
+        <span class="cov8" title="20">_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
                 Keys: bson.D{{Key: "record_id", Value: 1}, {Key: "state", Value: 1}},
         })
         if err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("%s: create record_id+state index: %w", cfg.typeName, err)
         }</span>
-        <span class="cov8" title="19">return nil</span>
+        <span class="cov8" title="20">return nil</span>
 }
 
-func (cfg entityVersioningConfig[T]) getMeta(c context.Context, id string) (*models.EntityMeta, error) <span class="cov10" title="44">{
+func (cfg entityVersioningConfig[T]) getMeta(c context.Context, id string) (*models.EntityMeta, error) <span class="cov10" title="46">{
         results, err := database.Query[models.EntityMeta](cfg.metaCollection, bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov10" title="44">if len(results) == 0 </span><span class="cov5" title="6">{
+        <span class="cov10" title="46">if len(results) == 0 </span><span class="cov5" title="6">{
                 return nil, nil
         }</span>
-        <span class="cov9" title="38">return results[0], nil</span>
+        <span class="cov9" title="40">return results[0], nil</span>
 }
 
-func (cfg entityVersioningConfig[T]) getVersion(c context.Context, recordID string, version int) (*T, error) <span class="cov9" title="33">{
+func (cfg entityVersioningConfig[T]) getVersion(c context.Context, recordID string, version int) (*T, error) <span class="cov9" title="34">{
         filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
         results, err := database.Query[T](cfg.versionCollection, filter, nil, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov9" title="33">if len(results) == 0 </span><span class="cov0" title="0">{
+        <span class="cov9" title="34">if len(results) == 0 </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-        <span class="cov9" title="33">return results[0], nil</span>
+        <span class="cov9" title="34">return results[0], nil</span>
 }
 
-func (cfg entityVersioningConfig[T]) setVersionState(c context.Context, recordID string, version int, fields bson.D) error <span class="cov7" title="17">{
+func (cfg entityVersioningConfig[T]) setVersionState(c context.Context, recordID string, version int, fields bson.D) error <span class="cov7" title="18">{
         filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
         _, err := database.Db.Collection(cfg.versionCollection).UpdateOne(c, filter, bson.D{{Key: "$set", Value: fields}})
         return err
 }</span>
 
-func (cfg entityVersioningConfig[T]) archiveVersion(c context.Context, recordID string, version int) error <span class="cov6" title="10">{
+func (cfg entityVersioningConfig[T]) archiveVersion(c context.Context, recordID string, version int) error <span class="cov6" title="11">{
         return cfg.setVersionState(c, recordID, version, bson.D{{Key: "state", Value: string(models.VersionStateArchived)}})
 }</span>
 
-func (cfg entityVersioningConfig[T]) setMetaCurrentVersion(c context.Context, recordID string, version int) error <span class="cov6" title="10">{
+func (cfg entityVersioningConfig[T]) setMetaCurrentVersion(c context.Context, recordID string, version int) error <span class="cov6" title="11">{
         _, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: recordID}},
@@ -391,7 +403,7 @@ func (cfg entityVersioningConfig[T]) changedFields(submitted, base *T) []string 
 
 // addEntity creates a record's meta record and its first (live) version. entity must already
 // carry its substantive field values; addEntity sets id/record_id/version/lifecycle fields.
-func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, createdBy string) (*string, error) <span class="cov8" title="20">{
+func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, createdBy string) (*string, error) <span class="cov8" title="21">{
         now := time.Now()
         metaID := primitive.NewObjectID().Hex()
         meta := models.EntityMeta{ID: metaID, CurrentVersion: 1, CreatedAt: now, CreatedBy: createdBy}
@@ -399,7 +411,7 @@ func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, cre
                 return nil, err
         }</span>
 
-        <span class="cov8" title="20">cfg.setID(entity, primitive.NewObjectID().Hex())
+        <span class="cov8" title="21">cfg.setID(entity, primitive.NewObjectID().Hex())
         cfg.setRecordID(entity, metaID)
         cfg.setVersion(entity, 1)
         lc := cfg.lifecycle(entity)
@@ -411,34 +423,34 @@ func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, cre
         if _, err := database.Insert[T](cfg.versionCollection, *entity); err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov8" title="20">return &amp;metaID, nil</span>
+        <span class="cov8" title="21">return &amp;metaID, nil</span>
 }
 
 // createVersion creates a new version for an existing record - editor/admin: state Live, goes
 // current immediately and archives the previous current version; submitter: state Submitted,
 // current pointer untouched. entity must already carry its desired substantive field values.
-func (cfg entityVersioningConfig[T]) createVersion(c context.Context, id string, entity *T, state models.VersionState, submittedBy string) (*T, error) <span class="cov7" title="16">{
+func (cfg entityVersioningConfig[T]) createVersion(c context.Context, id string, entity *T, state models.VersionState, submittedBy string) (*T, error) <span class="cov7" title="17">{
         return cfg.createVersionWithSubmission(c, id, entity, state, submittedBy, time.Now())
 }</span>
 
 // createVersionWithSubmission is createVersion with a caller-supplied submittedAt instead of
 // always stamping "now" - used by migration, which preserves a migrated proposal's original
 // submission time rather than the time of the migration run itself.
-func (cfg entityVersioningConfig[T]) createVersionWithSubmission(c context.Context, id string, entity *T, state models.VersionState, submittedBy string, submittedAt time.Time) (*T, error) <span class="cov7" title="17">{
+func (cfg entityVersioningConfig[T]) createVersionWithSubmission(c context.Context, id string, entity *T, state models.VersionState, submittedBy string, submittedAt time.Time) (*T, error) <span class="cov7" title="18">{
         meta, err := cfg.getMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov7" title="17">if meta == nil </span><span class="cov4" title="4">{
+        <span class="cov7" title="18">if meta == nil </span><span class="cov4" title="4">{
                 return nil, nil
         }</span>
 
-        <span class="cov7" title="13">nextVersion, err := cfg.nextVersionNumber(c, id)
+        <span class="cov7" title="14">nextVersion, err := cfg.nextVersionNumber(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
 
-        <span class="cov7" title="13">baseVersion := meta.CurrentVersion
+        <span class="cov7" title="14">baseVersion := meta.CurrentVersion
         cfg.setID(entity, primitive.NewObjectID().Hex())
         cfg.setRecordID(entity, id)
         cfg.setVersion(entity, nextVersion)
@@ -452,33 +464,33 @@ func (cfg entityVersioningConfig[T]) createVersionWithSubmission(c context.Conte
                 return nil, err
         }</span>
 
-        <span class="cov7" title="13">if state == models.VersionStateLive </span><span class="cov4" title="5">{
+        <span class="cov7" title="14">if state == models.VersionStateLive </span><span class="cov5" title="6">{
                 if err := cfg.archiveVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
-                <span class="cov4" title="5">if err := cfg.setMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
+                <span class="cov5" title="6">if err := cfg.setMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
         }
 
-        <span class="cov7" title="13">return entity, nil</span>
+        <span class="cov7" title="14">return entity, nil</span>
 }
 
 // nextVersionNumber returns the next sequential version number for a record - 1 if it has none yet.
-func (cfg entityVersioningConfig[T]) nextVersionNumber(c context.Context, recordID string) (int, error) <span class="cov7" title="13">{
+func (cfg entityVersioningConfig[T]) nextVersionNumber(c context.Context, recordID string) (int, error) <span class="cov7" title="14">{
         filter := bson.D{{Key: "record_id", Value: recordID}}
         sortOrder := bson.D{{Key: "version", Value: -1}}
         results, err := database.Query[T](cfg.versionCollection, filter, sortOrder, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return 0, err
         }</span>
-        <span class="cov7" title="13">if len(results) == 0 </span><span class="cov0" title="0">{
+        <span class="cov7" title="14">if len(results) == 0 </span><span class="cov0" title="0">{
                 return 1, nil
         }</span>
-        <span class="cov7" title="13">return cfg.versionOf(results[0]) + 1, nil</span>
+        <span class="cov7" title="14">return cfg.versionOf(results[0]) + 1, nil</span>
 }
 
-func (cfg entityVersioningConfig[T]) versionOf(v *T) int <span class="cov7" title="13">{
+func (cfg entityVersioningConfig[T]) versionOf(v *T) int <span class="cov7" title="14">{
         // Version is always the second config-set field; read it back via the fields the caller
         // already exposed through setVersion's counterpart is unnecessary - version numbers are
         // looked up via the raw bson document's own "version" key by the query filter/sort, so a
@@ -821,7 +833,7 @@ func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO <sp
         return &amp;vo.LicenseVersionVO{
                 ID: version.ID, RecordID: version.RecordID, Version: version.Version,
                 Title: version.Title, ShortTitle: version.ShortTitle, LicenseVer: version.LicenseVer,
-                Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website,
+                Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website.String(),
                 Status: version.Status, Availability: version.Availability, Notes: version.Notes,
                 Properties: modelcoreutil.FromPropertyModels(version.Properties),
                 Tags:       modelcoreutil.FromTagModels(version.Tags),
@@ -837,7 +849,7 @@ func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO <sp
 func licenseVersionFields(license *vo.LicenseVO) models.LicenseVersion <span class="cov10" title="6">{
         return models.LicenseVersion{
                 Title: license.Title, ShortTitle: license.ShortTitle, LicenseVer: license.Version,
-                Deed: license.Deed, LegalCode: license.LegalCode, Website: license.Website,
+                Deed: license.Deed, LegalCode: license.LegalCode, Website: parseWebsite(license.Website),
                 Status: license.Status, Availability: license.Availability, Notes: license.Notes,
                 Properties: modelcoreutil.ToPropertyModels(license.Properties),
                 Tags:       modelcoreutil.ToTagModels(license.Tags),
@@ -847,7 +859,7 @@ func licenseVersionFields(license *vo.LicenseVO) models.LicenseVersion <span cla
 func flattenLicense(meta *models.EntityMeta, version *models.LicenseVersion) *vo.LicenseVO <span class="cov4" title="2">{
         return &amp;vo.LicenseVO{
                 ID: meta.ID, Title: version.Title, ShortTitle: version.ShortTitle, Version: version.LicenseVer,
-                Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website,
+                Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website.String(),
                 Status: version.Status, Availability: version.Availability, Notes: version.Notes,
                 Properties: modelcoreutil.FromPropertyModels(version.Properties),
                 Tags:       modelcoreutil.FromTagModels(version.Tags),
@@ -1251,10 +1263,10 @@ var publisherVersioning = entityVersioningConfig[models.PublisherVersion]{
         metaCollection:    publisherMetaCollection,
         versionCollection: publisherVersionCollection,
         typeName:          "publisher",
-        lifecycle:         func(v *models.PublisherVersion) *models.VersionLifecycle <span class="cov10" title="22">{ return &amp;v.VersionLifecycle }</span>,
-        setID:             func(v *models.PublisherVersion, id string) <span class="cov9" title="18">{ v.ID = id }</span>,
-        setRecordID:       func(v *models.PublisherVersion, id string) <span class="cov9" title="18">{ v.RecordID = id }</span>,
-        setVersion:        func(v *models.PublisherVersion, n int) <span class="cov9" title="18">{ v.Version = n }</span>,
+        lifecycle:         func(v *models.PublisherVersion) *models.VersionLifecycle <span class="cov10" title="24">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.PublisherVersion, id string) <span class="cov9" title="20">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.PublisherVersion, id string) <span class="cov9" title="20">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.PublisherVersion, n int) <span class="cov9" title="20">{ v.Version = n }</span>,
         fields: map[string]entityFieldAccessor[models.PublisherVersion]{
                 "name":       {get: func(v *models.PublisherVersion) any <span class="cov0" title="0">{ return v.Name }</span>, set: func(v *models.PublisherVersion, val any) <span class="cov0" title="0">{ v.Name = val.(string) }</span>},
                 "address":    {get: func(v *models.PublisherVersion) any <span class="cov0" title="0">{ return v.Address }</span>, set: func(v *models.PublisherVersion, val any) <span class="cov0" title="0">{ v.Address = val.(string) }</span>},
@@ -1267,14 +1279,14 @@ var publisherVersioning = entityVersioningConfig[models.PublisherVersion]{
 
 // EnsurePublisherVersioningIndexes creates the indexes publisher version queries rely on. Safe to
 // call on every startup.
-func EnsurePublisherVersioningIndexes(c context.Context) error <span class="cov7" title="10">{
+func EnsurePublisherVersioningIndexes(c context.Context) error <span class="cov7" title="11">{
         return publisherVersioning.ensureIndexes(c)
 }</span>
 
-func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersionVO <span class="cov9" title="16">{
+func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersionVO <span class="cov9" title="17">{
         return &amp;vo.PublisherVersionVO{
                 ID: version.ID, RecordID: version.RecordID, Version: version.Version,
-                Name: version.Name, Address: version.Address, Website: version.Website, Notes: version.Notes,
+                Name: version.Name, Address: version.Address, Website: version.Website.String(), Notes: version.Notes,
                 Properties: modelcoreutil.FromPropertyModels(version.Properties),
                 Tags:       modelcoreutil.FromTagModels(version.Tags),
                 VersionLifecycleVO: vo.VersionLifecycleVO{
@@ -1286,17 +1298,17 @@ func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersion
         }
 }</span>
 
-func publisherVersionFields(publisher *vo.PublisherVO) models.PublisherVersion <span class="cov9" title="17">{
+func publisherVersionFields(publisher *vo.PublisherVO) models.PublisherVersion <span class="cov9" title="19">{
         return models.PublisherVersion{
-                Name: publisher.Name, Address: publisher.Address, Website: publisher.Website, Notes: publisher.Notes,
+                Name: publisher.Name, Address: publisher.Address, Website: parseWebsite(publisher.Website), Notes: publisher.Notes,
                 Properties: modelcoreutil.ToPropertyModels(publisher.Properties),
                 Tags:       modelcoreutil.ToTagModels(publisher.Tags),
         }
 }</span>
 
-func flattenPublisher(meta *models.EntityMeta, version *models.PublisherVersion) *vo.PublisherVO <span class="cov7" title="9">{
+func flattenPublisher(meta *models.EntityMeta, version *models.PublisherVersion) *vo.PublisherVO <span class="cov7" title="10">{
         return &amp;vo.PublisherVO{
-                ID: meta.ID, Name: version.Name, Address: version.Address, Website: version.Website, Notes: version.Notes,
+                ID: meta.ID, Name: version.Name, Address: version.Address, Website: version.Website.String(), Notes: version.Notes,
                 Properties: modelcoreutil.FromPropertyModels(version.Properties),
                 Tags:       modelcoreutil.FromTagModels(version.Tags),
                 AuditableVO: modelcorevo.AuditableVO{
@@ -1308,41 +1320,41 @@ func flattenPublisher(meta *models.EntityMeta, version *models.PublisherVersion)
 }</span>
 
 // AddPublisher creates a publisher's meta record and its first (live) version.
-func AddPublisher(c context.Context, publisher *vo.PublisherVO) (*string, error) <span class="cov7" title="9">{
+func AddPublisher(c context.Context, publisher *vo.PublisherVO) (*string, error) <span class="cov7" title="10">{
         version := publisherVersionFields(publisher)
         return publisherVersioning.addEntity(c, &amp;version, publisher.CreatedBy)
 }</span>
 
 // GetPublisher returns the flattened view of a publisher - matching the shape this function
 // returned before meta/version were split.
-func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov7" title="9">{
+func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov7" title="10">{
         meta, err := publisherVersioning.getMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov7" title="9">if meta == nil </span><span class="cov0" title="0">{
+        <span class="cov7" title="10">if meta == nil </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-        <span class="cov7" title="9">version, err := publisherVersioning.getVersion(c, id, meta.CurrentVersion)
+        <span class="cov7" title="10">version, err := publisherVersioning.getVersion(c, id, meta.CurrentVersion)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov7" title="9">if version == nil </span><span class="cov0" title="0">{
+        <span class="cov7" title="10">if version == nil </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-        <span class="cov7" title="9">return flattenPublisher(meta, version), nil</span>
+        <span class="cov7" title="10">return flattenPublisher(meta, version), nil</span>
 }
 
 // UpdatePublisher creates a new version of the publisher rather than mutating in place - state
 // VersionStateLive goes current immediately (editor/admin); VersionStateSubmitted leaves the
 // current pointer untouched (submitter).
-func UpdatePublisher(c context.Context, id string, publisher *vo.PublisherVO, state models.VersionState) (*vo.PublisherVersionVO, error) <span class="cov6" title="7">{
+func UpdatePublisher(c context.Context, id string, publisher *vo.PublisherVO, state models.VersionState) (*vo.PublisherVersionVO, error) <span class="cov6" title="8">{
         version := publisherVersionFields(publisher)
         result, err := publisherVersioning.createVersion(c, id, &amp;version, state, publisher.UpdatedBy)
         if err != nil || result == nil </span><span class="cov1" title="1">{
                 return nil, err
         }</span>
-        <span class="cov6" title="6">return publisherVersionToVO(result), nil</span>
+        <span class="cov6" title="7">return publisherVersionToVO(result), nil</span>
 }
 
 // ListPublisherVersions returns every version of a publisher, newest first.
@@ -1446,8 +1458,8 @@ func MigratePublishers(c context.Context) (int, error) <span class="cov4" title=
                 oldCollection: "publishers",
                 versioning:    publisherVersioning,
                 id:            func(p *models.Publisher) string </span><span class="cov5" title="5">{ return p.ID }</span>,
-                auditable:     func(p *models.Publisher) modelcore.Auditable <span class="cov3" title="2">{ return p.Auditable }</span>,
-                toVersion: func(p *models.Publisher) models.PublisherVersion <span class="cov3" title="2">{
+                auditable:     func(p *models.Publisher) modelcore.Auditable <span class="cov2" title="2">{ return p.Auditable }</span>,
+                toVersion: func(p *models.Publisher) models.PublisherVersion <span class="cov2" title="2">{
                         return models.PublisherVersion{
                                 Name: p.Name, Address: p.Address, Website: p.Website, Notes: p.Notes,
                                 Properties: p.Properties, Tags: p.Tags,
@@ -1584,7 +1596,7 @@ func EnsureStudioVersioningIndexes(c context.Context) error <span class="cov6" t
 func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO <span class="cov6" title="3">{
         return &amp;vo.StudioVersionVO{
                 ID: version.ID, RecordID: version.RecordID, Version: version.Version,
-                Name: version.Name, Website: version.Website, Notes: version.Notes,
+                Name: version.Name, Website: version.Website.String(), Notes: version.Notes,
                 Properties: modelcoreutil.FromPropertyModels(version.Properties),
                 Tags:       modelcoreutil.FromTagModels(version.Tags),
                 VersionLifecycleVO: vo.VersionLifecycleVO{
@@ -1598,7 +1610,7 @@ func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO <span 
 
 func studioVersionFields(studio *vo.StudioVO) models.StudioVersion <span class="cov10" title="6">{
         return models.StudioVersion{
-                Name: studio.Name, Website: studio.Website, Notes: studio.Notes,
+                Name: studio.Name, Website: parseWebsite(studio.Website), Notes: studio.Notes,
                 Properties: modelcoreutil.ToPropertyModels(studio.Properties),
                 Tags:       modelcoreutil.ToTagModels(studio.Tags),
         }
@@ -1606,7 +1618,7 @@ func studioVersionFields(studio *vo.StudioVO) models.StudioVersion <span class="
 
 func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.StudioVO <span class="cov4" title="2">{
         return &amp;vo.StudioVO{
-                ID: meta.ID, Name: version.Name, Website: version.Website, Notes: version.Notes,
+                ID: meta.ID, Name: version.Name, Website: version.Website.String(), Notes: version.Notes,
                 Properties: modelcoreutil.FromPropertyModels(version.Properties),
                 Tags:       modelcoreutil.FromTagModels(version.Tags),
                 AuditableVO: modelcorevo.AuditableVO{
