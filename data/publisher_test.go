@@ -11,58 +11,141 @@ import (
 	"github.com/sweetrpg/common.go/logging"
 	"github.com/sweetrpg/mongodb.go/constants"
 	"github.com/sweetrpg/mongodb.go/database"
-	"go.mongodb.org/mongo-driver/bson"
 )
-
-// seedPublisherID is a fixed, non-ObjectID string on purpose - Publisher's "_id" is a plain
-// string field (not a primitive.ObjectID), so database.Insert's ObjectID-typed return value
-// doesn't apply here; the seed document's own ID is used directly instead.
-const seedPublisherID = "seed-publisher"
 
 type PublisherDataTestSuite struct {
 	suite.Suite
+	seedPublisherID string
 }
 
 func (suite *PublisherDataTestSuite) SetupTest() {
 	_ = os.Setenv(constants.DB_URI, os.Getenv("TEST_DB_URI"))
 	logging.Init()
 	database.SetupDatabase()
+	assert.NoError(suite.T(), EnsurePublisherVersioningIndexes(suite.T().Context()))
 
-	_, err := database.Insert[models.Publisher]("publishers", models.Publisher{
-		ID:      seedPublisherID,
-		Name:    "Test Publisher",
-		Address: "123 Test St",
+	id, err := AddPublisher(suite.T().Context(), &vo.PublisherVO{
+		Name: "Test Publisher", Address: "123 Test St",
 	})
 	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), id)
+	suite.seedPublisherID = *id
 }
 
-func (suite *PublisherDataTestSuite) TearDownTest() {
-	_, _ = database.Db.Collection("publishers").DeleteMany(
-		suite.T().Context(), bson.D{{Key: "_id", Value: seedPublisherID}})
-}
-
-func (suite *PublisherDataTestSuite) TestUpdatePublisher() {
-	updated, err := UpdatePublisher(suite.T().Context(), seedPublisherID, &vo.PublisherVO{
-		Name:    "Updated Publisher",
-		Address: "456 Updated Ave",
-	})
+func (suite *PublisherDataTestSuite) TestUpdatePublisherLive() {
+	updated, err := UpdatePublisher(suite.T().Context(), suite.seedPublisherID, &vo.PublisherVO{
+		Name: "Updated Publisher", Address: "456 Updated Ave",
+	}, models.VersionStateLive)
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), updated)
 	assert.Equal(suite.T(), "Updated Publisher", updated.Name)
-	assert.Equal(suite.T(), "456 Updated Ave", updated.Address)
+	assert.Equal(suite.T(), string(models.VersionStateLive), string(updated.State))
 
-	fetched, err := GetPublisher(suite.T().Context(), seedPublisherID)
+	fetched, err := GetPublisher(suite.T().Context(), suite.seedPublisherID)
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), fetched)
 	assert.Equal(suite.T(), "Updated Publisher", fetched.Name)
 }
 
+func (suite *PublisherDataTestSuite) TestUpdatePublisherSubmittedLeavesCurrentVersionUnchanged() {
+	submitted, err := UpdatePublisher(suite.T().Context(), suite.seedPublisherID, &vo.PublisherVO{
+		Name: "Proposed Publisher",
+	}, models.VersionStateSubmitted)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), submitted)
+	assert.Equal(suite.T(), string(models.VersionStateSubmitted), string(submitted.State))
+
+	fetched, err := GetPublisher(suite.T().Context(), suite.seedPublisherID)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "Test Publisher", fetched.Name)
+}
+
 func (suite *PublisherDataTestSuite) TestUpdatePublisherNotFound() {
 	updated, err := UpdatePublisher(suite.T().Context(), "does-not-exist", &vo.PublisherVO{
 		Name: "Doesn't Matter",
-	})
+	}, models.VersionStateLive)
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), updated)
+}
+
+func (suite *PublisherDataTestSuite) TestAcceptPublisherVersionFullAccept() {
+	submitted, err := UpdatePublisher(suite.T().Context(), suite.seedPublisherID, &vo.PublisherVO{
+		Name: "Proposed Publisher",
+	}, models.VersionStateSubmitted)
+	assert.NoError(suite.T(), err)
+
+	accepted, conflicts, err := AcceptPublisherVersion(
+		suite.T().Context(), suite.seedPublisherID, submitted.Version, nil, "editor-1", nil)
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), conflicts)
+	assert.Equal(suite.T(), string(models.VersionStateLive), string(accepted.State))
+
+	fetched, err := GetPublisher(suite.T().Context(), suite.seedPublisherID)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "Proposed Publisher", fetched.Name)
+
+	// Re-fetch the accepted version from Mongo (not the in-memory struct AcceptPublisherVersion
+	// already mutated) - guards against VersionLifecycle's embedded bson fields silently landing
+	// under a nested "versionlifecycle" subdocument instead of being inlined, which would let a
+	// $set-based state transition appear to succeed in-memory while never actually persisting.
+	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), string(models.VersionStateLive), string(refetched.State))
+}
+
+func (suite *PublisherDataTestSuite) TestRejectPublisherVersion() {
+	submitted, err := UpdatePublisher(suite.T().Context(), suite.seedPublisherID, &vo.PublisherVO{
+		Name: "Proposed Publisher",
+	}, models.VersionStateSubmitted)
+	assert.NoError(suite.T(), err)
+
+	note := "not good"
+	err = RejectPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version, "editor-1", &note)
+	assert.NoError(suite.T(), err)
+
+	fetched, err := GetPublisher(suite.T().Context(), suite.seedPublisherID)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "Test Publisher", fetched.Name)
+
+	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), string(models.VersionStateRejected), string(refetched.State))
+	assert.Equal(suite.T(), &note, refetched.ReviewNote)
+}
+
+func (suite *PublisherDataTestSuite) TestRetractPublisherVersion() {
+	proposed := &vo.PublisherVO{Name: "Proposed Publisher"}
+	proposed.UpdatedBy = "submitter-1"
+	submitted, err := UpdatePublisher(suite.T().Context(), suite.seedPublisherID, proposed,
+		models.VersionStateSubmitted)
+	assert.NoError(suite.T(), err)
+
+	retracted, err := RetractPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version, "submitter-1")
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), string(models.VersionStateWithdrawn), string(retracted.State))
+
+	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), string(models.VersionStateWithdrawn), string(refetched.State))
+}
+
+func (suite *PublisherDataTestSuite) TestSetCurrentPublisherVersion() {
+	_, err := UpdatePublisher(suite.T().Context(), suite.seedPublisherID, &vo.PublisherVO{
+		Name: "Updated Publisher",
+	}, models.VersionStateLive)
+	assert.NoError(suite.T(), err)
+
+	rolledBack, err := SetCurrentPublisherVersion(suite.T().Context(), suite.seedPublisherID, 1)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "Test Publisher", rolledBack.Name)
+
+	fetched, err := GetPublisher(suite.T().Context(), suite.seedPublisherID)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "Test Publisher", fetched.Name)
+
+	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, 1)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), string(models.VersionStateLive), string(refetched.State))
 }
 
 func TestPublisherDbTestSuite(t *testing.T) {

@@ -66,7 +66,7 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO, state model
 	_, span := otel.Tracer("volume").Start(c, "db-update-volume", oteltrace.WithAttributes(attribute.String("id", id)))
 	defer span.End()
 
-	return createVolumeVersion(c, id, volume, state, volume.UpdatedBy, time.Now())
+	return createVolumeVersion(c, id, volume, state, volume.UpdatedBy, time.Now(), nil, nil)
 }
 
 // CreateSubmittedVolumeVersion creates a submitted version stamped with a caller-supplied
@@ -74,10 +74,19 @@ func UpdateVolume(c context.Context, id string, volume *vo.VolumeVO, state model
 // version model - unlike UpdateVolume, which always stamps "now", this preserves the original
 // proposal's submission audit per design.md's Migration Plan.
 func CreateSubmittedVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, submittedBy string, submittedAt time.Time) (*vo.VolumeVersionVO, error) {
-	return createVolumeVersion(c, id, volume, models.VersionStateSubmitted, submittedBy, submittedAt)
+	return createVolumeVersion(c, id, volume, models.VersionStateSubmitted, submittedBy, submittedAt, nil, nil)
 }
 
-func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState, submittedBy string, submittedAt time.Time) (*vo.VolumeVersionVO, error) {
+// CreateSubmittedVolumeVersionWithStagedAssets is CreateSubmittedVolumeVersion's edit-session
+// counterpart (see design.md's "Staged edit-session assets ride on the submitted version as
+// separate staged fields") - volume's own CoverAssetId/SampleAssetIds are expected to still be
+// the current live values (nothing has been promoted yet); stagedCoverAssetId/
+// stagedSampleAssetIds carry the session's not-yet-promoted uploads instead.
+func CreateSubmittedVolumeVersionWithStagedAssets(c context.Context, id string, volume *vo.VolumeVO, submittedBy string, stagedCoverAssetId *string, stagedSampleAssetIds []string) (*vo.VolumeVersionVO, error) {
+	return createVolumeVersion(c, id, volume, models.VersionStateSubmitted, submittedBy, time.Now(), stagedCoverAssetId, stagedSampleAssetIds)
+}
+
+func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, state models.VersionState, submittedBy string, submittedAt time.Time, stagedCoverAssetId *string, stagedSampleAssetIds []string) (*vo.VolumeVersionVO, error) {
 	meta, err := getVolumeMeta(c, id)
 	if err != nil {
 		logging.Logger.Error("Error while looking up VolumeMeta for update", "id", id, "error", err)
@@ -102,6 +111,8 @@ func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, stat
 	newVersion.BaseVersion = &baseVersion
 	newVersion.SubmittedBy = submittedBy
 	newVersion.SubmittedAt = submittedAt
+	newVersion.StagedCoverAssetId = stagedCoverAssetId
+	newVersion.StagedSampleAssetIds = stagedSampleAssetIds
 
 	if _, err := database.Insert[models.VolumeVersion](volumeVersionCollection, newVersion); err != nil {
 		logging.Logger.Error("Error while inserting VolumeVersion object", "error", err)
@@ -261,29 +272,31 @@ func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *v
 	systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds)
 
 	return &vo.VolumeVersionVO{
-		ID:               version.ID,
-		RecordID:         version.RecordID,
-		Version:          version.Version,
-		Title:            version.Title,
-		Description:      version.Description,
-		Notes:            version.Notes,
-		Format:           version.Format,
-		CoverAssetId:     version.CoverAssetId,
-		SampleAssetIds:   version.SampleAssetIds,
-		Systems:          systems,
-		Publishers:       publishers,
-		Studios:          studios,
-		Licenses:         licenses,
-		Properties:       modelcoreutil.FromPropertyModels(version.Properties),
-		Tags:             modelcoreutil.FromTagModels(version.Tags),
-		State:            vo.VersionState(version.State),
-		BaseVersion:      version.BaseVersion,
-		SubmittedBy:      version.SubmittedBy,
-		SubmittedAt:      version.SubmittedAt,
-		ReviewedBy:       version.ReviewedBy,
-		ReviewedAt:       version.ReviewedAt,
-		ReviewNote:       version.ReviewNote,
-		ResultingVersion: version.ResultingVersion,
+		ID:                   version.ID,
+		RecordID:             version.RecordID,
+		Version:              version.Version,
+		Title:                version.Title,
+		Description:          version.Description,
+		Notes:                version.Notes,
+		Format:               version.Format,
+		CoverAssetId:         version.CoverAssetId,
+		SampleAssetIds:       version.SampleAssetIds,
+		StagedCoverAssetId:   version.StagedCoverAssetId,
+		StagedSampleAssetIds: version.StagedSampleAssetIds,
+		Systems:              systems,
+		Publishers:           publishers,
+		Studios:              studios,
+		Licenses:             licenses,
+		Properties:           modelcoreutil.FromPropertyModels(version.Properties),
+		Tags:                 modelcoreutil.FromTagModels(version.Tags),
+		State:                vo.VersionState(version.State),
+		BaseVersion:          version.BaseVersion,
+		SubmittedBy:          version.SubmittedBy,
+		SubmittedAt:          version.SubmittedAt,
+		ReviewedBy:           version.ReviewedBy,
+		ReviewedAt:           version.ReviewedAt,
+		ReviewNote:           version.ReviewNote,
+		ResultingVersion:     version.ResultingVersion,
 	}
 }
 
