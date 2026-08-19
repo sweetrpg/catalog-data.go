@@ -26,6 +26,8 @@ var personVersioning = entityVersioningConfig[models.PersonVersion]{
 	setID:             func(v *models.PersonVersion, id string) { v.ID = id },
 	setRecordID:       func(v *models.PersonVersion, id string) { v.RecordID = id },
 	setVersion:        func(v *models.PersonVersion, n int) { v.Version = n },
+	recordID:          func(v *models.PersonVersion) string { return v.RecordID },
+	displayName:       func(v *models.PersonVersion) string { return v.Name },
 	fields: map[string]entityFieldAccessor[models.PersonVersion]{
 		"name":       {get: func(v *models.PersonVersion) any { return v.Name }, set: func(v *models.PersonVersion, val any) { v.Name = val.(string) }},
 		"notes":      {get: func(v *models.PersonVersion) any { return v.Notes }, set: func(v *models.PersonVersion, val any) { v.Notes = val.(string) }},
@@ -216,4 +218,9 @@ func MigratePersons(c context.Context) (int, error) {
 			}
 		},
 	})
+}
+
+// GetPersonStats returns the persons landing-page-summary card's count/most-recent data.
+func GetPersonStats(c context.Context) (*TypeStats, error) {
+	return personVersioning.stats(c)
 }

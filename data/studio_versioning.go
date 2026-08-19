@@ -27,6 +27,8 @@ var studioVersioning = entityVersioningConfig[models.StudioVersion]{
 	setID:             func(v *models.StudioVersion, id string) { v.ID = id },
 	setRecordID:       func(v *models.StudioVersion, id string) { v.RecordID = id },
 	setVersion:        func(v *models.StudioVersion, n int) { v.Version = n },
+	recordID:          func(v *models.StudioVersion) string { return v.RecordID },
+	displayName:       func(v *models.StudioVersion) string { return v.Name },
 	fields: map[string]entityFieldAccessor[models.StudioVersion]{
 		"name":       {get: func(v *models.StudioVersion) any { return v.Name }, set: func(v *models.StudioVersion, val any) { v.Name = val.(string) }},
 		"website":    {get: func(v *models.StudioVersion) any { return v.Website }, set: func(v *models.StudioVersion, val any) { v.Website = val.(url.URL) }},
@@ -219,4 +221,9 @@ func MigrateStudios(c context.Context) (int, error) {
 			}
 		},
 	})
+}
+
+// GetStudioStats returns the studios landing-page-summary card's count/most-recent data.
+func GetStudioStats(c context.Context) (*TypeStats, error) {
+	return studioVersioning.stats(c)
 }

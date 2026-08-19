@@ -30,6 +30,8 @@ var systemVersioning = entityVersioningConfig[models.SystemVersion]{
 	setID:             func(v *models.SystemVersion, id string) { v.ID = id },
 	setRecordID:       func(v *models.SystemVersion, id string) { v.RecordID = id },
 	setVersion:        func(v *models.SystemVersion, n int) { v.Version = n },
+	recordID:          func(v *models.SystemVersion) string { return v.RecordID },
+	displayName:       func(v *models.SystemVersion) string { return v.GameSystem },
 	fields: map[string]entityFieldAccessor[models.SystemVersion]{
 		"game_system": {get: func(v *models.SystemVersion) any { return v.GameSystem }, set: func(v *models.SystemVersion, val any) { v.GameSystem = val.(string) }},
 		"edition":     {get: func(v *models.SystemVersion) any { return v.Edition }, set: func(v *models.SystemVersion, val any) { v.Edition = val.(string) }},
@@ -205,4 +207,9 @@ func MigrateSystems(c context.Context) (int, error) {
 			return models.SystemVersion{GameSystem: s.GameSystem, Edition: s.Edition, Notes: s.Notes, Tags: s.Tags}
 		},
 	})
+}
+
+// GetSystemStats returns the systems landing-page-summary card's count/most-recent data.
+func GetSystemStats(c context.Context) (*TypeStats, error) {
+	return systemVersioning.stats(c)
 }

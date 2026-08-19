@@ -27,6 +27,8 @@ var licenseVersioning = entityVersioningConfig[models.LicenseVersion]{
 	setID:             func(v *models.LicenseVersion, id string) { v.ID = id },
 	setRecordID:       func(v *models.LicenseVersion, id string) { v.RecordID = id },
 	setVersion:        func(v *models.LicenseVersion, n int) { v.Version = n },
+	recordID:          func(v *models.LicenseVersion) string { return v.RecordID },
+	displayName:       func(v *models.LicenseVersion) string { return v.Title },
 	fields: map[string]entityFieldAccessor[models.LicenseVersion]{
 		"title":         {get: func(v *models.LicenseVersion) any { return v.Title }, set: func(v *models.LicenseVersion, val any) { v.Title = val.(string) }},
 		"short_title":   {get: func(v *models.LicenseVersion) any { return v.ShortTitle }, set: func(v *models.LicenseVersion, val any) { v.ShortTitle = val.(string) }},
@@ -233,4 +235,9 @@ func MigrateLicenses(c context.Context) (int, error) {
 			}
 		},
 	})
+}
+
+// GetLicenseStats returns the licenses landing-page-summary card's count/most-recent data.
+func GetLicenseStats(c context.Context) (*TypeStats, error) {
+	return licenseVersioning.stats(c)
 }

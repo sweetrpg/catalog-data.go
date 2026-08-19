@@ -51,9 +51,59 @@ type entityVersioningConfig[T any] struct {
 	setID             func(*T, string)
 	setRecordID       func(*T, string)
 	setVersion        func(*T, int)
+	// recordID/displayName back the landing-page summary's per-type stats() query (catalog-
+	// landing-page-summary) - the only two fields that query needs beyond what lifecycle()
+	// already exposes (State, SubmittedAt).
+	recordID    func(*T) string
+	displayName func(*T) string
 	// fields are the substantive fields a submission can change and a review can selectively
 	// accept - everything on T except its version-lifecycle bookkeeping.
 	fields map[string]entityFieldAccessor[T]
+}
+
+// TypeStats is one entity type's catalog-landing-page-summary card: a live-record count plus
+// the single most recently submitted live record, or zero-value/nil fields if the type has no
+// live records yet (see spec's "degrades gracefully for an empty entity type" requirement).
+type TypeStats struct {
+	Count          int
+	LastUpdated    *time.Time
+	MostRecentID   string
+	MostRecentName string
+}
+
+// stats computes a TypeStats over cfg's live version collection - sorted-descending-limit-1 for
+// the most recent record (design.md's decision: necessary anyway since "most recent" needs the
+// specific record, not just a max timestamp, unlike GetCatalogStats' volume-only precedent) plus
+// a separate unlimited count query, matching this package's existing "no driver-level
+// CountDocuments" convention (see GetCatalogStats).
+func (cfg entityVersioningConfig[T]) stats(c context.Context) (*TypeStats, error) {
+	filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
+
+	countProjection := bson.D{{Key: "record_id", Value: 1}}
+	all, err := database.Query[T](cfg.versionCollection, filter, nil, countProjection, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("%s: count live versions: %w", cfg.typeName, err)
+	}
+
+	stats := &TypeStats{Count: len(all)}
+	if stats.Count == 0 {
+		return stats, nil
+	}
+
+	sortOrder := bson.D{{Key: "submitted_at", Value: -1}}
+	recent, err := database.Query[T](cfg.versionCollection, filter, sortOrder, nil, 0, 1)
+	if err != nil {
+		return nil, fmt.Errorf("%s: query most recent version: %w", cfg.typeName, err)
+	}
+	if len(recent) == 0 {
+		return stats, nil
+	}
+
+	submittedAt := cfg.lifecycle(recent[0]).SubmittedAt
+	stats.LastUpdated = &submittedAt
+	stats.MostRecentID = cfg.recordID(recent[0])
+	stats.MostRecentName = cfg.displayName(recent[0])
+	return stats, nil
 }
 
 func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error {
