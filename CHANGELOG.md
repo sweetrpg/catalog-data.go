@@ -1,4 +1,11 @@
 
+## 0.9.0 - 2026-08-19
+
+### Added
+- Add GetCatalogStats aggregate (total volume count, most recent update)
+
+
+
 ## 0.8.2 - 2026-08-18
 
 ### Fixed
