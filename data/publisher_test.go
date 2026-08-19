@@ -4,9 +4,9 @@ import (
 	"os"
 	"testing"
 
-	apiutil "github.com/sweetrpg/api-core.go/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	apiutil "github.com/sweetrpg/api-core.go/util"
 	"github.com/sweetrpg/catalog-objects.go/models"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
