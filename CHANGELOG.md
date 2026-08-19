@@ -1,4 +1,11 @@
 
+## 0.10.0 - 2026-08-19
+
+### Added
+- Add per-entity-type count/most-recent stats
+
+
+
 ## 0.9.0 - 2026-08-19
 
 ### Added
