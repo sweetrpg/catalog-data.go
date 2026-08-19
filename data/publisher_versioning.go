@@ -12,6 +12,7 @@ import (
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
@@ -43,6 +44,18 @@ var publisherVersioning = entityVersioningConfig[models.PublisherVersion]{
 // call on every startup.
 func EnsurePublisherVersioningIndexes(c context.Context) error {
 	return publisherVersioning.ensureIndexes(c)
+}
+
+// SoftDeletePublisher hides a publisher from every Query*/List* read without touching its
+// version history - see design.md's soft-delete decision.
+func SoftDeletePublisher(c context.Context, id string, deletedBy string) error {
+	return publisherVersioning.softDelete(c, id, deletedBy)
+}
+
+// RestorePublisher clears a soft-deleted publisher's deletion, returning it to every normal read
+// path.
+func RestorePublisher(c context.Context, id string) error {
+	return publisherVersioning.restore(c, id)
 }
 
 func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersionVO {
@@ -181,6 +194,7 @@ func CountSubmittedPublisherVersionsBySubmitter(c context.Context, submittedBy s
 // QueryPublishers lists the current (live) version of every publisher matching params.
 func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) {
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
+	filter = append(filter, bson.E{Key: "deleted_at", Value: nil})
 	metas, err := database.Query[models.EntityMeta](publisherMetaCollection, filter, sort, projection, params.Start, params.Limit)
 	if err != nil {
 		return nil, err

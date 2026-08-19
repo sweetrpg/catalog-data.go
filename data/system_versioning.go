@@ -10,6 +10,7 @@ import (
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
@@ -44,6 +45,17 @@ var systemVersioning = entityVersioningConfig[models.SystemVersion]{
 // on every startup.
 func EnsureSystemVersioningIndexes(c context.Context) error {
 	return systemVersioning.ensureIndexes(c)
+}
+
+// SoftDeleteSystem hides a system from every Query*/List* read without touching its version
+// history - see design.md's soft-delete decision.
+func SoftDeleteSystem(c context.Context, id string, deletedBy string) error {
+	return systemVersioning.softDelete(c, id, deletedBy)
+}
+
+// RestoreSystem clears a soft-deleted system's deletion, returning it to every normal read path.
+func RestoreSystem(c context.Context, id string) error {
+	return systemVersioning.restore(c, id)
 }
 
 func systemVersionToVO(version *models.SystemVersion) *vo.SystemVersionVO {
@@ -176,6 +188,7 @@ func CountSubmittedSystemVersionsBySubmitter(c context.Context, submittedBy stri
 // QuerySystems lists the current (live) version of every system matching params.
 func QuerySystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO, error) {
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
+	filter = append(filter, bson.E{Key: "deleted_at", Value: nil})
 	metas, err := database.Query[models.EntityMeta](systemMetaCollection, filter, sort, projection, params.Start, params.Limit)
 	if err != nil {
 		return nil, err

@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	apiutil "github.com/sweetrpg/api-core.go/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/sweetrpg/catalog-objects.go/models"
@@ -160,6 +161,43 @@ func (suite *PublisherDataTestSuite) TestWebsiteRoundTripsAsPlainString() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), fetched)
 	assert.Equal(suite.T(), "https://example.com/kobold", fetched.Website)
+}
+
+// TestSoftDeletePublisherLifecycle exercises entityVersioningConfig's shared soft-delete engine -
+// publisher, studio, person, license, and system all route through the identical generic code,
+// so this one test covers that engine; Volume gets its own test since its path is bespoke.
+func (suite *PublisherDataTestSuite) TestSoftDeletePublisherLifecycle() {
+	err := SoftDeletePublisher(suite.T().Context(), suite.seedPublisherID, "admin-1")
+	assert.NoError(suite.T(), err)
+
+	results, err := QueryPublishers(suite.T().Context(), apiutil.QueryParams{Limit: 100})
+	assert.NoError(suite.T(), err)
+	for _, p := range results {
+		assert.NotEqual(suite.T(), suite.seedPublisherID, p.ID, "deleted publisher should be excluded from QueryPublishers")
+	}
+
+	fetched, err := GetPublisher(suite.T().Context(), suite.seedPublisherID)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), fetched, "GetPublisher must still return a soft-deleted record")
+	assert.NotNil(suite.T(), fetched.DeletedAt)
+	assert.Equal(suite.T(), "admin-1", *fetched.DeletedBy)
+
+	err = RestorePublisher(suite.T().Context(), suite.seedPublisherID)
+	assert.NoError(suite.T(), err)
+
+	restored, err := GetPublisher(suite.T().Context(), suite.seedPublisherID)
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), restored.DeletedAt)
+
+	results, err = QueryPublishers(suite.T().Context(), apiutil.QueryParams{Limit: 100})
+	assert.NoError(suite.T(), err)
+	found := false
+	for _, p := range results {
+		if p.ID == suite.seedPublisherID {
+			found = true
+		}
+	}
+	assert.True(suite.T(), found, "restored publisher should reappear in QueryPublishers")
 }
 
 func TestPublisherDbTestSuite(t *testing.T) {
