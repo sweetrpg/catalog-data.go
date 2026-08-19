@@ -57,21 +57,21 @@
 				
 				<option value="file0">github.com/sweetrpg/catalog-data.go/data/contribution.go (60.4%)</option>
 				
-				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (56.6%)</option>
+				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (58.1%)</option>
 				
-				<option value="file2">github.com/sweetrpg/catalog-data.go/data/license_versioning.go (26.3%)</option>
+				<option value="file2">github.com/sweetrpg/catalog-data.go/data/license_versioning.go (25.5%)</option>
 				
-				<option value="file3">github.com/sweetrpg/catalog-data.go/data/person_versioning.go (30.9%)</option>
+				<option value="file3">github.com/sweetrpg/catalog-data.go/data/person_versioning.go (29.8%)</option>
 				
-				<option value="file4">github.com/sweetrpg/catalog-data.go/data/publisher_versioning.go (57.6%)</option>
+				<option value="file4">github.com/sweetrpg/catalog-data.go/data/publisher_versioning.go (55.7%)</option>
 				
 				<option value="file5">github.com/sweetrpg/catalog-data.go/data/review.go (0.0%)</option>
 				
-				<option value="file6">github.com/sweetrpg/catalog-data.go/data/studio_versioning.go (30.1%)</option>
+				<option value="file6">github.com/sweetrpg/catalog-data.go/data/studio_versioning.go (32.6%)</option>
 				
 				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_versioning.go (0.0%)</option>
 				
-				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (67.9%)</option>
+				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (60.2%)</option>
 				
 				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
 				
@@ -275,8 +275,8 @@ import (
 // still stores (Mongo bson round-trips url.URL fine - only the JSON:API wire format needed the
 // plain-string fix). An unparseable or empty string yields the zero value, matching the
 // server-layer field accessors' same silent-skip-on-parse-error behavior.
-func parseWebsite(s string) url.URL <span class="cov9" title="31">{
-        if u, err := url.Parse(s); err == nil &amp;&amp; u != nil </span><span class="cov9" title="31">{
+func parseWebsite(s string) url.URL <span class="cov9" title="33">{
+        if u, err := url.Parse(s); err == nil &amp;&amp; u != nil </span><span class="cov9" title="33">{
                 return *u
         }</span>
         <span class="cov0" title="0">return url.URL{}</span>
@@ -305,12 +305,62 @@ type entityVersioningConfig[T any] struct {
         setID             func(*T, string)
         setRecordID       func(*T, string)
         setVersion        func(*T, int)
+        // recordID/displayName back the landing-page summary's per-type stats() query (catalog-
+        // landing-page-summary) - the only two fields that query needs beyond what lifecycle()
+        // already exposes (State, SubmittedAt).
+        recordID    func(*T) string
+        displayName func(*T) string
         // fields are the substantive fields a submission can change and a review can selectively
         // accept - everything on T except its version-lifecycle bookkeeping.
         fields map[string]entityFieldAccessor[T]
 }
 
-func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <span class="cov8" title="20">{
+// TypeStats is one entity type's catalog-landing-page-summary card: a live-record count plus
+// the single most recently submitted live record, or zero-value/nil fields if the type has no
+// live records yet (see spec's "degrades gracefully for an empty entity type" requirement).
+type TypeStats struct {
+        Count          int
+        LastUpdated    *time.Time
+        MostRecentID   string
+        MostRecentName string
+}
+
+// stats computes a TypeStats over cfg's live version collection - sorted-descending-limit-1 for
+// the most recent record (design.md's decision: necessary anyway since "most recent" needs the
+// specific record, not just a max timestamp, unlike GetCatalogStats' volume-only precedent) plus
+// a separate unlimited count query, matching this package's existing "no driver-level
+// CountDocuments" convention (see GetCatalogStats).
+func (cfg entityVersioningConfig[T]) stats(c context.Context) (*TypeStats, error) <span class="cov2" title="2">{
+        filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
+
+        countProjection := bson.D{{Key: "record_id", Value: 1}}
+        all, err := database.Query[T](cfg.versionCollection, filter, nil, countProjection, 0, 0)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("%s: count live versions: %w", cfg.typeName, err)
+        }</span>
+
+        <span class="cov2" title="2">stats := &amp;TypeStats{Count: len(all)}
+        if stats.Count == 0 </span><span class="cov0" title="0">{
+                return stats, nil
+        }</span>
+
+        <span class="cov2" title="2">sortOrder := bson.D{{Key: "submitted_at", Value: -1}}
+        recent, err := database.Query[T](cfg.versionCollection, filter, sortOrder, nil, 0, 1)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("%s: query most recent version: %w", cfg.typeName, err)
+        }</span>
+        <span class="cov2" title="2">if len(recent) == 0 </span><span class="cov0" title="0">{
+                return stats, nil
+        }</span>
+
+        <span class="cov2" title="2">submittedAt := cfg.lifecycle(recent[0]).SubmittedAt
+        stats.LastUpdated = &amp;submittedAt
+        stats.MostRecentID = cfg.recordID(recent[0])
+        stats.MostRecentName = cfg.displayName(recent[0])
+        return stats, nil</span>
+}
+
+func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <span class="cov8" title="21">{
         _, err := database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
                 Keys:    bson.D{{Key: "record_id", Value: 1}, {Key: "version", Value: 1}},
                 Options: options.Index().SetUnique(true),
@@ -318,13 +368,13 @@ func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <spa
         if err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("%s: create record_id+version index: %w", cfg.typeName, err)
         }</span>
-        <span class="cov8" title="20">_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
+        <span class="cov8" title="21">_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
                 Keys: bson.D{{Key: "record_id", Value: 1}, {Key: "state", Value: 1}},
         })
         if err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("%s: create record_id+state index: %w", cfg.typeName, err)
         }</span>
-        <span class="cov8" title="20">return nil</span>
+        <span class="cov8" title="21">return nil</span>
 }
 
 func (cfg entityVersioningConfig[T]) getMeta(c context.Context, id string) (*models.EntityMeta, error) <span class="cov10" title="46">{
@@ -403,7 +453,7 @@ func (cfg entityVersioningConfig[T]) changedFields(submitted, base *T) []string 
 
 // addEntity creates a record's meta record and its first (live) version. entity must already
 // carry its substantive field values; addEntity sets id/record_id/version/lifecycle fields.
-func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, createdBy string) (*string, error) <span class="cov8" title="21">{
+func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, createdBy string) (*string, error) <span class="cov8" title="23">{
         now := time.Now()
         metaID := primitive.NewObjectID().Hex()
         meta := models.EntityMeta{ID: metaID, CurrentVersion: 1, CreatedAt: now, CreatedBy: createdBy}
@@ -411,7 +461,7 @@ func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, cre
                 return nil, err
         }</span>
 
-        <span class="cov8" title="21">cfg.setID(entity, primitive.NewObjectID().Hex())
+        <span class="cov8" title="23">cfg.setID(entity, primitive.NewObjectID().Hex())
         cfg.setRecordID(entity, metaID)
         cfg.setVersion(entity, 1)
         lc := cfg.lifecycle(entity)
@@ -423,7 +473,7 @@ func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, cre
         if _, err := database.Insert[T](cfg.versionCollection, *entity); err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov8" title="21">return &amp;metaID, nil</span>
+        <span class="cov8" title="23">return &amp;metaID, nil</span>
 }
 
 // createVersion creates a new version for an existing record - editor/admin: state Live, goes
@@ -808,6 +858,8 @@ var licenseVersioning = entityVersioningConfig[models.LicenseVersion]{
         setID:             func(v *models.LicenseVersion, id string) <span class="cov9" title="5">{ v.ID = id }</span>,
         setRecordID:       func(v *models.LicenseVersion, id string) <span class="cov9" title="5">{ v.RecordID = id }</span>,
         setVersion:        func(v *models.LicenseVersion, n int) <span class="cov9" title="5">{ v.Version = n }</span>,
+        recordID:          func(v *models.LicenseVersion) string <span class="cov0" title="0">{ return v.RecordID }</span>,
+        displayName:       func(v *models.LicenseVersion) string <span class="cov0" title="0">{ return v.Title }</span>,
         fields: map[string]entityFieldAccessor[models.LicenseVersion]{
                 "title":         {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.Title }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.Title = val.(string) }</span>},
                 "short_title":   {get: func(v *models.LicenseVersion) any <span class="cov0" title="0">{ return v.ShortTitle }</span>, set: func(v *models.LicenseVersion, val any) <span class="cov0" title="0">{ v.ShortTitle = val.(string) }</span>},
@@ -1015,6 +1067,11 @@ func MigrateLicenses(c context.Context) (int, error) <span class="cov0" title="0
                 }</span>,
         })
 }
+
+// GetLicenseStats returns the licenses landing-page-summary card's count/most-recent data.
+func GetLicenseStats(c context.Context) (*TypeStats, error) <span class="cov0" title="0">{
+        return licenseVersioning.stats(c)
+}</span>
 </pre>
 		
 		<pre class="file" id="file3" style="display: none">package data
@@ -1045,6 +1102,8 @@ var personVersioning = entityVersioningConfig[models.PersonVersion]{
         setID:             func(v *models.PersonVersion, id string) <span class="cov9" title="7">{ v.ID = id }</span>,
         setRecordID:       func(v *models.PersonVersion, id string) <span class="cov9" title="7">{ v.RecordID = id }</span>,
         setVersion:        func(v *models.PersonVersion, n int) <span class="cov9" title="7">{ v.Version = n }</span>,
+        recordID:          func(v *models.PersonVersion) string <span class="cov0" title="0">{ return v.RecordID }</span>,
+        displayName:       func(v *models.PersonVersion) string <span class="cov0" title="0">{ return v.Name }</span>,
         fields: map[string]entityFieldAccessor[models.PersonVersion]{
                 "name":       {get: func(v *models.PersonVersion) any <span class="cov0" title="0">{ return v.Name }</span>, set: func(v *models.PersonVersion, val any) <span class="cov0" title="0">{ v.Name = val.(string) }</span>},
                 "notes":      {get: func(v *models.PersonVersion) any <span class="cov0" title="0">{ return v.Notes }</span>, set: func(v *models.PersonVersion, val any) <span class="cov0" title="0">{ v.Notes = val.(string) }</span>},
@@ -1236,6 +1295,11 @@ func MigratePersons(c context.Context) (int, error) <span class="cov0" title="0"
                 }</span>,
         })
 }
+
+// GetPersonStats returns the persons landing-page-summary card's count/most-recent data.
+func GetPersonStats(c context.Context) (*TypeStats, error) <span class="cov0" title="0">{
+        return personVersioning.stats(c)
+}</span>
 </pre>
 		
 		<pre class="file" id="file4" style="display: none">package data
@@ -1267,6 +1331,8 @@ var publisherVersioning = entityVersioningConfig[models.PublisherVersion]{
         setID:             func(v *models.PublisherVersion, id string) <span class="cov9" title="20">{ v.ID = id }</span>,
         setRecordID:       func(v *models.PublisherVersion, id string) <span class="cov9" title="20">{ v.RecordID = id }</span>,
         setVersion:        func(v *models.PublisherVersion, n int) <span class="cov9" title="20">{ v.Version = n }</span>,
+        recordID:          func(v *models.PublisherVersion) string <span class="cov0" title="0">{ return v.RecordID }</span>,
+        displayName:       func(v *models.PublisherVersion) string <span class="cov0" title="0">{ return v.Name }</span>,
         fields: map[string]entityFieldAccessor[models.PublisherVersion]{
                 "name":       {get: func(v *models.PublisherVersion) any <span class="cov0" title="0">{ return v.Name }</span>, set: func(v *models.PublisherVersion, val any) <span class="cov0" title="0">{ v.Name = val.(string) }</span>},
                 "address":    {get: func(v *models.PublisherVersion) any <span class="cov0" title="0">{ return v.Address }</span>, set: func(v *models.PublisherVersion, val any) <span class="cov0" title="0">{ v.Address = val.(string) }</span>},
@@ -1467,6 +1533,11 @@ func MigratePublishers(c context.Context) (int, error) <span class="cov4" title=
                 }</span>,
         })
 }
+
+// GetPublisherStats returns the publishers landing-page-summary card's count/most-recent data.
+func GetPublisherStats(c context.Context) (*TypeStats, error) <span class="cov0" title="0">{
+        return publisherVersioning.stats(c)
+}</span>
 </pre>
 		
 		<pre class="file" id="file5" style="display: none">package data
@@ -1574,10 +1645,12 @@ var studioVersioning = entityVersioningConfig[models.StudioVersion]{
         metaCollection:    studioMetaCollection,
         versionCollection: studioVersionCollection,
         typeName:          "studio",
-        lifecycle:         func(v *models.StudioVersion) *models.VersionLifecycle <span class="cov10" title="6">{ return &amp;v.VersionLifecycle }</span>,
-        setID:             func(v *models.StudioVersion, id string) <span class="cov9" title="5">{ v.ID = id }</span>,
-        setRecordID:       func(v *models.StudioVersion, id string) <span class="cov9" title="5">{ v.RecordID = id }</span>,
-        setVersion:        func(v *models.StudioVersion, n int) <span class="cov9" title="5">{ v.Version = n }</span>,
+        lifecycle:         func(v *models.StudioVersion) *models.VersionLifecycle <span class="cov10" title="10">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.StudioVersion, id string) <span class="cov8" title="7">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.StudioVersion, id string) <span class="cov8" title="7">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.StudioVersion, n int) <span class="cov8" title="7">{ v.Version = n }</span>,
+        recordID:          func(v *models.StudioVersion) string <span class="cov3" title="2">{ return v.RecordID }</span>,
+        displayName:       func(v *models.StudioVersion) string <span class="cov3" title="2">{ return v.Name }</span>,
         fields: map[string]entityFieldAccessor[models.StudioVersion]{
                 "name":       {get: func(v *models.StudioVersion) any <span class="cov0" title="0">{ return v.Name }</span>, set: func(v *models.StudioVersion, val any) <span class="cov0" title="0">{ v.Name = val.(string) }</span>},
                 "website":    {get: func(v *models.StudioVersion) any <span class="cov0" title="0">{ return v.Website }</span>, set: func(v *models.StudioVersion, val any) <span class="cov0" title="0">{ v.Website = val.(url.URL) }</span>},
@@ -1589,11 +1662,11 @@ var studioVersioning = entityVersioningConfig[models.StudioVersion]{
 
 // EnsureStudioVersioningIndexes creates the indexes studio version queries rely on. Safe to call
 // on every startup.
-func EnsureStudioVersioningIndexes(c context.Context) error <span class="cov6" title="3">{
+func EnsureStudioVersioningIndexes(c context.Context) error <span class="cov6" title="4">{
         return studioVersioning.ensureIndexes(c)
 }</span>
 
-func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO <span class="cov6" title="3">{
+func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO <span class="cov5" title="3">{
         return &amp;vo.StudioVersionVO{
                 ID: version.ID, RecordID: version.RecordID, Version: version.Version,
                 Name: version.Name, Website: version.Website.String(), Notes: version.Notes,
@@ -1608,7 +1681,7 @@ func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO <span 
         }
 }</span>
 
-func studioVersionFields(studio *vo.StudioVO) models.StudioVersion <span class="cov10" title="6">{
+func studioVersionFields(studio *vo.StudioVO) models.StudioVersion <span class="cov9" title="8">{
         return models.StudioVersion{
                 Name: studio.Name, Website: parseWebsite(studio.Website), Notes: studio.Notes,
                 Properties: modelcoreutil.ToPropertyModels(studio.Properties),
@@ -1616,7 +1689,7 @@ func studioVersionFields(studio *vo.StudioVO) models.StudioVersion <span class="
         }
 }</span>
 
-func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.StudioVO <span class="cov4" title="2">{
+func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.StudioVO <span class="cov3" title="2">{
         return &amp;vo.StudioVO{
                 ID: meta.ID, Name: version.Name, Website: version.Website.String(), Notes: version.Notes,
                 Properties: modelcoreutil.FromPropertyModels(version.Properties),
@@ -1630,38 +1703,38 @@ func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.S
 }</span>
 
 // AddStudio creates a studio's meta record and its first (live) version.
-func AddStudio(c context.Context, studio *vo.StudioVO) (*string, error) <span class="cov6" title="3">{
+func AddStudio(c context.Context, studio *vo.StudioVO) (*string, error) <span class="cov7" title="5">{
         version := studioVersionFields(studio)
         return studioVersioning.addEntity(c, &amp;version, studio.CreatedBy)
 }</span>
 
 // GetStudio returns the flattened view of a studio.
-func GetStudio(c context.Context, id string) (*vo.StudioVO, error) <span class="cov4" title="2">{
+func GetStudio(c context.Context, id string) (*vo.StudioVO, error) <span class="cov3" title="2">{
         meta, err := studioVersioning.getMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov4" title="2">if meta == nil </span><span class="cov0" title="0">{
+        <span class="cov3" title="2">if meta == nil </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-        <span class="cov4" title="2">version, err := studioVersioning.getVersion(c, id, meta.CurrentVersion)
+        <span class="cov3" title="2">version, err := studioVersioning.getVersion(c, id, meta.CurrentVersion)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov4" title="2">if version == nil </span><span class="cov0" title="0">{
+        <span class="cov3" title="2">if version == nil </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-        <span class="cov4" title="2">return flattenStudio(meta, version), nil</span>
+        <span class="cov3" title="2">return flattenStudio(meta, version), nil</span>
 }
 
 // UpdateStudio creates a new version of the studio rather than mutating in place.
-func UpdateStudio(c context.Context, id string, studio *vo.StudioVO, state models.VersionState) (*vo.StudioVersionVO, error) <span class="cov6" title="3">{
+func UpdateStudio(c context.Context, id string, studio *vo.StudioVO, state models.VersionState) (*vo.StudioVersionVO, error) <span class="cov5" title="3">{
         version := studioVersionFields(studio)
         result, err := studioVersioning.createVersion(c, id, &amp;version, state, studio.UpdatedBy)
         if err != nil || result == nil </span><span class="cov1" title="1">{
                 return nil, err
         }</span>
-        <span class="cov4" title="2">return studioVersionToVO(result), nil</span>
+        <span class="cov3" title="2">return studioVersionToVO(result), nil</span>
 }
 
 // ListStudioVersions returns every version of a studio, newest first.
@@ -1771,6 +1844,11 @@ func MigrateStudios(c context.Context) (int, error) <span class="cov0" title="0"
                 }</span>,
         })
 }
+
+// GetStudioStats returns the studios landing-page-summary card's count/most-recent data.
+func GetStudioStats(c context.Context) (*TypeStats, error) <span class="cov3" title="2">{
+        return studioVersioning.stats(c)
+}</span>
 </pre>
 		
 		<pre class="file" id="file7" style="display: none">package data
@@ -1805,6 +1883,8 @@ var systemVersioning = entityVersioningConfig[models.SystemVersion]{
         setID:             func(v *models.SystemVersion, id string) <span class="cov0" title="0">{ v.ID = id }</span>,
         setRecordID:       func(v *models.SystemVersion, id string) <span class="cov0" title="0">{ v.RecordID = id }</span>,
         setVersion:        func(v *models.SystemVersion, n int) <span class="cov0" title="0">{ v.Version = n }</span>,
+        recordID:          func(v *models.SystemVersion) string <span class="cov0" title="0">{ return v.RecordID }</span>,
+        displayName:       func(v *models.SystemVersion) string <span class="cov0" title="0">{ return v.GameSystem }</span>,
         fields: map[string]entityFieldAccessor[models.SystemVersion]{
                 "game_system": {get: func(v *models.SystemVersion) any <span class="cov0" title="0">{ return v.GameSystem }</span>, set: func(v *models.SystemVersion, val any) <span class="cov0" title="0">{ v.GameSystem = val.(string) }</span>},
                 "edition":     {get: func(v *models.SystemVersion) any <span class="cov0" title="0">{ return v.Edition }</span>, set: func(v *models.SystemVersion, val any) <span class="cov0" title="0">{ v.Edition = val.(string) }</span>},
@@ -1981,6 +2061,11 @@ func MigrateSystems(c context.Context) (int, error) <span class="cov0" title="0"
                 }</span>,
         })
 }
+
+// GetSystemStats returns the systems landing-page-summary card's count/most-recent data.
+func GetSystemStats(c context.Context) (*TypeStats, error) <span class="cov0" title="0">{
+        return systemVersioning.stats(c)
+}</span>
 </pre>
 		
 		<pre class="file" id="file8" style="display: none">package data
@@ -2386,6 +2471,43 @@ func GetCatalogStats(c context.Context) (*CatalogStats, error) <span class="cov1
         }
 
         <span class="cov1" title="1">logging.Logger.Debug("returning catalog stats", "stats", stats)
+        return stats, nil</span>
+}
+
+// GetVolumeTypeStats returns the volumes landing-page-summary card's count/most-recent data -
+// TypeStats-shaped like the other five entity types' Get*Stats (catalog-landing-page-summary),
+// but implemented directly against volumeVersionCollection rather than entityVersioningConfig
+// since Volume isn't on that shared engine (see entity_versioning.go's own doc comment).
+func GetVolumeTypeStats(c context.Context) (*TypeStats, error) <span class="cov0" title="0">{
+        span := tracing.BuildSpanWithParams(c, "volumes", "db-get-volume-type-stats", apiutil.QueryParams{})
+        defer span.End()
+
+        filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
+
+        countProjection := bson.D{{Key: "record_id", Value: 1}}
+        all, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, countProjection, 0, 0)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("volume: count live versions: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">stats := &amp;TypeStats{Count: len(all)}
+        if stats.Count == 0 </span><span class="cov0" title="0">{
+                return stats, nil
+        }</span>
+
+        <span class="cov0" title="0">sortOrder := bson.D{{Key: "submitted_at", Value: -1}}
+        recent, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sortOrder, nil, 0, 1)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("volume: query most recent version: %w", err)
+        }</span>
+        <span class="cov0" title="0">if len(recent) == 0 </span><span class="cov0" title="0">{
+                return stats, nil
+        }</span>
+
+        <span class="cov0" title="0">submittedAt := recent[0].SubmittedAt
+        stats.LastUpdated = &amp;submittedAt
+        stats.MostRecentID = recent[0].RecordID
+        stats.MostRecentName = recent[0].Title
         return stats, nil</span>
 }
 </pre>
