@@ -69,6 +69,24 @@ func (suite *StudioDataTestSuite) TestAcceptStudioVersionFullAccept() {
 	assert.Equal(suite.T(), "Proposed Studio", fetched.Name)
 }
 
+func (suite *StudioDataTestSuite) TestGetStudioStatsReflectsMostRecent() {
+	stats, err := GetStudioStats(suite.T().Context())
+	assert.NoError(suite.T(), err)
+	assert.GreaterOrEqual(suite.T(), stats.Count, 1)
+	assert.NotNil(suite.T(), stats.LastUpdated)
+	assert.NotEmpty(suite.T(), stats.MostRecentID)
+	assert.NotEmpty(suite.T(), stats.MostRecentName)
+
+	secondID, err := AddStudio(suite.T().Context(), &vo.StudioVO{Name: "Second Studio"})
+	assert.NoError(suite.T(), err)
+
+	updated, err := GetStudioStats(suite.T().Context())
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), stats.Count+1, updated.Count)
+	assert.Equal(suite.T(), *secondID, updated.MostRecentID)
+	assert.Equal(suite.T(), "Second Studio", updated.MostRecentName)
+}
+
 func TestStudioDbTestSuite(t *testing.T) {
 	suite.Run(t, new(StudioDataTestSuite))
 }

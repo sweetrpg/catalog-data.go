@@ -403,3 +403,40 @@ func GetCatalogStats(c context.Context) (*CatalogStats, error) {
 	logging.Logger.Debug("returning catalog stats", "stats", stats)
 	return stats, nil
 }
+
+// GetVolumeTypeStats returns the volumes landing-page-summary card's count/most-recent data -
+// TypeStats-shaped like the other five entity types' Get*Stats (catalog-landing-page-summary),
+// but implemented directly against volumeVersionCollection rather than entityVersioningConfig
+// since Volume isn't on that shared engine (see entity_versioning.go's own doc comment).
+func GetVolumeTypeStats(c context.Context) (*TypeStats, error) {
+	span := tracing.BuildSpanWithParams(c, "volumes", "db-get-volume-type-stats", apiutil.QueryParams{})
+	defer span.End()
+
+	filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
+
+	countProjection := bson.D{{Key: "record_id", Value: 1}}
+	all, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, countProjection, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("volume: count live versions: %w", err)
+	}
+
+	stats := &TypeStats{Count: len(all)}
+	if stats.Count == 0 {
+		return stats, nil
+	}
+
+	sortOrder := bson.D{{Key: "submitted_at", Value: -1}}
+	recent, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sortOrder, nil, 0, 1)
+	if err != nil {
+		return nil, fmt.Errorf("volume: query most recent version: %w", err)
+	}
+	if len(recent) == 0 {
+		return stats, nil
+	}
+
+	submittedAt := recent[0].SubmittedAt
+	stats.LastUpdated = &submittedAt
+	stats.MostRecentID = recent[0].RecordID
+	stats.MostRecentName = recent[0].Title
+	return stats, nil
+}

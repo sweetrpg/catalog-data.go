@@ -27,6 +27,8 @@ var publisherVersioning = entityVersioningConfig[models.PublisherVersion]{
 	setID:             func(v *models.PublisherVersion, id string) { v.ID = id },
 	setRecordID:       func(v *models.PublisherVersion, id string) { v.RecordID = id },
 	setVersion:        func(v *models.PublisherVersion, n int) { v.Version = n },
+	recordID:          func(v *models.PublisherVersion) string { return v.RecordID },
+	displayName:       func(v *models.PublisherVersion) string { return v.Name },
 	fields: map[string]entityFieldAccessor[models.PublisherVersion]{
 		"name":       {get: func(v *models.PublisherVersion) any { return v.Name }, set: func(v *models.PublisherVersion, val any) { v.Name = val.(string) }},
 		"address":    {get: func(v *models.PublisherVersion) any { return v.Address }, set: func(v *models.PublisherVersion, val any) { v.Address = val.(string) }},
@@ -226,4 +228,9 @@ func MigratePublishers(c context.Context) (int, error) {
 			}
 		},
 	})
+}
+
+// GetPublisherStats returns the publishers landing-page-summary card's count/most-recent data.
+func GetPublisherStats(c context.Context) (*TypeStats, error) {
+	return publisherVersioning.stats(c)
 }
