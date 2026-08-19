@@ -363,3 +363,43 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 	logging.Logger.Debug("returning volume value objects", "vos", vos)
 	return vos, nil
 }
+
+// CatalogStats is a small aggregate over the live volume set - the total count and the most
+// recent submission time - for callers that need a catalog-wide summary (e.g. a landing page)
+// without paginating through every volume themselves.
+type CatalogStats struct {
+	VolumeCount int
+	LastUpdated *time.Time
+}
+
+// GetCatalogStats computes CatalogStats over every live volume version. Uses an unlimited
+// database.Query (limit 0) rather than a driver-level CountDocuments/aggregate, matching this
+// package's existing pattern of going through database.Query rather than reaching past it to
+// the raw mongo-driver collection - catalog sizes here are small enough (an indie/hobby
+// catalog, not a high-volume one) that this isn't a real cost.
+func GetCatalogStats(c context.Context) (*CatalogStats, error) {
+	logging.Logger.Info("GetCatalogStats", "c", c)
+
+	span := tracing.BuildSpanWithParams(c, "volumes", "db-get-catalog-stats", apiutil.QueryParams{})
+	defer span.End()
+
+	filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
+	projection := bson.D{{Key: "submitted_at", Value: 1}}
+
+	versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, projection, 0, 0)
+	if err != nil {
+		logging.Logger.Error(fmt.Sprintf("Error while querying database for catalog stats: %+v", err))
+		return nil, err
+	}
+
+	stats := &CatalogStats{VolumeCount: len(versions)}
+	for _, version := range versions {
+		if stats.LastUpdated == nil || version.SubmittedAt.After(*stats.LastUpdated) {
+			submittedAt := version.SubmittedAt
+			stats.LastUpdated = &submittedAt
+		}
+	}
+
+	logging.Logger.Debug("returning catalog stats", "stats", stats)
+	return stats, nil
+}
