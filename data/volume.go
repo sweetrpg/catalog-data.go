@@ -141,6 +141,29 @@ func DeleteVolume(c context.Context, id string) error {
 	return nil
 }
 
+// SoftDeleteVolume sets the volume meta record's deleted_at/deleted_by, hiding it from
+// QueryVolumes without touching its version history - Volume's own non-generic path mirroring
+// entityVersioningConfig.softDelete, since Volume isn't on the shared engine (see design.md).
+func SoftDeleteVolume(c context.Context, id string, deletedBy string) error {
+	now := time.Now()
+	_, err := database.Db.Collection(volumeMetaCollection).UpdateOne(
+		c,
+		bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: now}, {Key: "deleted_by", Value: deletedBy}}}},
+	)
+	return err
+}
+
+// RestoreVolume clears a soft-deleted volume's deletion, returning it to QueryVolumes.
+func RestoreVolume(c context.Context, id string) error {
+	_, err := database.Db.Collection(volumeMetaCollection).UpdateOne(
+		c,
+		bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: nil}, {Key: "deleted_by", Value: nil}}}},
+	)
+	return err
+}
+
 // GetVolume returns the flattened view of a volume - its meta record merged with its current
 // version's data - matching the shape this function returned before meta/version were split.
 func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
@@ -355,6 +378,9 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 		}
 		if meta == nil {
 			logging.Logger.Error(fmt.Sprintf("No VolumeMeta found for VolumeVersion record %s", version.RecordID))
+			continue
+		}
+		if meta.DeletedAt != nil {
 			continue
 		}
 		vos = append(vos, flattenVolume(c, meta, version))

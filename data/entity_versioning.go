@@ -505,6 +505,29 @@ func (cfg entityVersioningConfig[T]) setCurrentVersion(c context.Context, id str
 	return target, nil
 }
 
+// softDelete sets the meta record's deleted_at/deleted_by, hiding it from Query*/List* reads
+// without touching version history. No-op fields on an already-deleted record are overwritten
+// with the new deletion's stamp - matches restore's own idempotent behavior.
+func (cfg entityVersioningConfig[T]) softDelete(c context.Context, id string, deletedBy string) error {
+	now := time.Now()
+	_, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
+		c,
+		bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: now}, {Key: "deleted_by", Value: deletedBy}}}},
+	)
+	return err
+}
+
+// restore clears the meta record's deleted_at/deleted_by, returning it to every normal read path.
+func (cfg entityVersioningConfig[T]) restore(c context.Context, id string) error {
+	_, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
+		c,
+		bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: nil}, {Key: "deleted_by", Value: nil}}}},
+	)
+	return err
+}
+
 // countSubmittedBySubmitter counts a submitter's currently-pending (state: submitted) versions.
 func (cfg entityVersioningConfig[T]) countSubmittedBySubmitter(c context.Context, submittedBy string) (int64, error) {
 	filter := bson.D{

@@ -379,6 +379,40 @@ func (suite *VolumeDataTestSuite) TestSetCurrentVolumeVersionRollback() {
 	assert.Equal(suite.T(), models.VersionStateArchived, models.VersionState(v2.State))
 }
 
+func (suite *VolumeDataTestSuite) TestSoftDeleteVolumeLifecycle() {
+	err := SoftDeleteVolume(suite.T().Context(), suite.seedVolumeID, "admin-1")
+	assert.NoError(suite.T(), err)
+
+	results, err := QueryVolumes(suite.T().Context(), apiutil.QueryParams{Limit: 100})
+	assert.NoError(suite.T(), err)
+	for _, v := range results {
+		assert.NotEqual(suite.T(), suite.seedVolumeID, v.ID, "deleted volume should be excluded from QueryVolumes")
+	}
+
+	fetched, err := GetVolume(suite.T().Context(), suite.seedVolumeID)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), fetched, "GetVolume must still return a soft-deleted record")
+	assert.NotNil(suite.T(), fetched.DeletedAt)
+	assert.Equal(suite.T(), "admin-1", *fetched.DeletedBy)
+
+	err = RestoreVolume(suite.T().Context(), suite.seedVolumeID)
+	assert.NoError(suite.T(), err)
+
+	restored, err := GetVolume(suite.T().Context(), suite.seedVolumeID)
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), restored.DeletedAt)
+
+	results, err = QueryVolumes(suite.T().Context(), apiutil.QueryParams{Limit: 100})
+	assert.NoError(suite.T(), err)
+	found := false
+	for _, v := range results {
+		if v.ID == suite.seedVolumeID {
+			found = true
+		}
+	}
+	assert.True(suite.T(), found, "restored volume should reappear in QueryVolumes")
+}
+
 func TestDbTestSuite(t *testing.T) {
 	suite.Run(t, new(VolumeDataTestSuite))
 }
