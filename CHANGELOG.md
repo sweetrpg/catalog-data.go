@@ -1,4 +1,11 @@
 
+## 0.12.0 - 2026-08-20
+
+### Added
+- Resolve game systems via gamesystems-api instead of internal storage
+
+
+
 ## 0.11.0 - 2026-08-20
 
 ### Added
