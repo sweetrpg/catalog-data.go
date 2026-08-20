@@ -69,13 +69,15 @@
 				
 				<option value="file6">github.com/sweetrpg/catalog-data.go/data/studio_versioning.go (31.5%)</option>
 				
-				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_versioning.go (0.0%)</option>
+				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_client.go (0.0%)</option>
 				
 				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (61.7%)</option>
 				
 				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
 				
 				<option value="file10">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (64.6%)</option>
+				
+				<option value="file11">github.com/sweetrpg/catalog-data.go/gamesystems/client.go (60.5%)</option>
 				
 				</select>
 			</div>
@@ -1932,229 +1934,54 @@ func GetStudioStats(c context.Context) (*TypeStats, error) <span class="cov3" ti
 import (
         "context"
 
-        apiutil "github.com/sweetrpg/api-core.go/util"
-        "github.com/sweetrpg/catalog-objects.go/models"
+        "github.com/sweetrpg/catalog-data.go/gamesystems"
         "github.com/sweetrpg/catalog-objects.go/vo"
-        modelcore "github.com/sweetrpg/model-core.go/models"
-        modelcoreutil "github.com/sweetrpg/model-core.go/util"
         modelcorevo "github.com/sweetrpg/model-core.go/vo"
-        "github.com/sweetrpg/mongodb.go/database"
-        "go.mongodb.org/mongo-driver/bson"
 )
 
-const (
-        systemMetaCollection    = "systems_meta"
-        systemVersionCollection = "systems_versions"
-)
+// GameSystemsClient resolves system references against gamesystems-api, the system of record
+// for game systems (see platform's game-systems-catalog spec), instead of catalog-api storing
+// its own copy. Set once at startup (see catalog-api's cmd/catalog-api/main.go); nil until then,
+// in which case GetSystem/GetSystemStats degrade to "no data" rather than panicking - matching
+// how resolveVolumeRelations already treats a missing/erroring relation as skip-and-log.
+var GameSystemsClient *gamesystems.Client
 
-// systemVersioning gives system the same meta+version model as the other four generic types,
-// even though system has no write path today (see proposal.md's Impact section) - task 7.5
-// explicitly repeats task groups 1-4 (model/data-access/API endpoints/SDK) for system, giving it
-// a write path for the first time as part of this change; only catalog-web pages are out of
-// scope, per design.md's Non-Goals.
-var systemVersioning = entityVersioningConfig[models.SystemVersion]{
-        metaCollection:    systemMetaCollection,
-        versionCollection: systemVersionCollection,
-        typeName:          "system",
-        lifecycle:         func(v *models.SystemVersion) *models.VersionLifecycle <span class="cov0" title="0">{ return &amp;v.VersionLifecycle }</span>,
-        setID:             func(v *models.SystemVersion, id string) <span class="cov0" title="0">{ v.ID = id }</span>,
-        setRecordID:       func(v *models.SystemVersion, id string) <span class="cov0" title="0">{ v.RecordID = id }</span>,
-        setVersion:        func(v *models.SystemVersion, n int) <span class="cov0" title="0">{ v.Version = n }</span>,
-        recordID:          func(v *models.SystemVersion) string <span class="cov0" title="0">{ return v.RecordID }</span>,
-        displayName:       func(v *models.SystemVersion) string <span class="cov0" title="0">{ return v.GameSystem }</span>,
-        fields: map[string]entityFieldAccessor[models.SystemVersion]{
-                "game_system": {get: func(v *models.SystemVersion) any <span class="cov0" title="0">{ return v.GameSystem }</span>, set: func(v *models.SystemVersion, val any) <span class="cov0" title="0">{ v.GameSystem = val.(string) }</span>},
-                "edition":     {get: func(v *models.SystemVersion) any <span class="cov0" title="0">{ return v.Edition }</span>, set: func(v *models.SystemVersion, val any) <span class="cov0" title="0">{ v.Edition = val.(string) }</span>},
-                "notes":       {get: func(v *models.SystemVersion) any <span class="cov0" title="0">{ return v.Notes }</span>, set: func(v *models.SystemVersion, val any) <span class="cov0" title="0">{ v.Notes = val.(string) }</span>},
-                "tags":        {get: func(v *models.SystemVersion) any <span class="cov0" title="0">{ return v.Tags }</span>, set: func(v *models.SystemVersion, val any) <span class="cov0" title="0">{ v.Tags = val.([]modelcore.Tag) }</span>},
-        },
-}
-
-// EnsureSystemVersioningIndexes creates the indexes system version queries rely on. Safe to call
-// on every startup.
-func EnsureSystemVersioningIndexes(c context.Context) error <span class="cov0" title="0">{
-        return systemVersioning.ensureIndexes(c)
-}</span>
-
-// SoftDeleteSystem hides a system from every Query*/List* read without touching its version
-// history - see design.md's soft-delete decision.
-func SoftDeleteSystem(c context.Context, id string, deletedBy string) error <span class="cov0" title="0">{
-        return systemVersioning.softDelete(c, id, deletedBy)
-}</span>
-
-// RestoreSystem clears a soft-deleted system's deletion, returning it to every normal read path.
-func RestoreSystem(c context.Context, id string) error <span class="cov0" title="0">{
-        return systemVersioning.restore(c, id)
-}</span>
-
-func systemVersionToVO(version *models.SystemVersion) *vo.SystemVersionVO <span class="cov0" title="0">{
-        return &amp;vo.SystemVersionVO{
-                ID: version.ID, RecordID: version.RecordID, Version: version.Version,
-                GameSystem: version.GameSystem, Edition: version.Edition, Notes: version.Notes,
-                Tags: modelcoreutil.FromTagModels(version.Tags),
-                VersionLifecycleVO: vo.VersionLifecycleVO{
-                        State: vo.VersionState(version.State), BaseVersion: version.BaseVersion,
-                        SubmittedBy: version.SubmittedBy, SubmittedAt: version.SubmittedAt,
-                        ReviewedBy: version.ReviewedBy, ReviewedAt: version.ReviewedAt,
-                        ReviewNote: version.ReviewNote, ResultingVersion: version.ResultingVersion,
-                },
-        }
-}</span>
-
-func systemVersionFields(system *vo.SystemVO) models.SystemVersion <span class="cov0" title="0">{
-        return models.SystemVersion{
-                GameSystem: system.GameSystem, Edition: system.Edition, Notes: system.Notes,
-                Tags: modelcoreutil.ToTagModels(system.Tags),
-        }
-}</span>
-
-func flattenSystem(meta *models.EntityMeta, version *models.SystemVersion) *vo.SystemVO <span class="cov0" title="0">{
-        return &amp;vo.SystemVO{
-                ID: meta.ID, GameSystem: version.GameSystem, Edition: version.Edition, Notes: version.Notes,
-                Tags: modelcoreutil.FromTagModels(version.Tags),
-                AuditableVO: modelcorevo.AuditableVO{
-                        CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
-                        UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
-                        DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
-                },
-        }
-}</span>
-
-// AddSystem creates a system's meta record and its first (live) version.
-func AddSystem(c context.Context, system *vo.SystemVO) (*string, error) <span class="cov0" title="0">{
-        version := systemVersionFields(system)
-        return systemVersioning.addEntity(c, &amp;version, system.CreatedBy)
-}</span>
-
-// GetSystem returns the flattened view of a system.
+// GetSystem resolves a game system by id against gamesystems-api's current (live) version.
 func GetSystem(c context.Context, id string) (*vo.SystemVO, error) <span class="cov0" title="0">{
-        meta, err := systemVersioning.getMeta(c, id)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov0" title="0">if meta == nil </span><span class="cov0" title="0">{
+        if GameSystemsClient == nil </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-        <span class="cov0" title="0">version, err := systemVersioning.getVersion(c, id, meta.CurrentVersion)
+        <span class="cov0" title="0">system, err := GameSystemsClient.Get(c, id)
         if err != nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov0" title="0">if version == nil </span><span class="cov0" title="0">{
-                return nil, nil
-        }</span>
-        <span class="cov0" title="0">return flattenSystem(meta, version), nil</span>
-}
-
-// UpdateSystem creates a new version of the system rather than mutating in place.
-func UpdateSystem(c context.Context, id string, system *vo.SystemVO, state models.VersionState) (*vo.SystemVersionVO, error) <span class="cov0" title="0">{
-        version := systemVersionFields(system)
-        result, err := systemVersioning.createVersion(c, id, &amp;version, state, system.UpdatedBy)
-        if err != nil || result == nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov0" title="0">return systemVersionToVO(result), nil</span>
-}
-
-// ListSystemVersions returns every version of a system, newest first.
-func ListSystemVersions(c context.Context, id string) ([]*vo.SystemVersionVO, error) <span class="cov0" title="0">{
-        versions, err := systemVersioning.listVersions(c, id)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov0" title="0">vos := make([]*vo.SystemVersionVO, 0, len(versions))
-        for _, v := range versions </span><span class="cov0" title="0">{
-                vos = append(vos, systemVersionToVO(v))
-        }</span>
-        <span class="cov0" title="0">return vos, nil</span>
-}
-
-// GetSystemVersion returns one version's full snapshot.
-func GetSystemVersion(c context.Context, id string, version int) (*vo.SystemVersionVO, error) <span class="cov0" title="0">{
-        result, err := systemVersioning.getVersion(c, id, version)
-        if err != nil || result == nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov0" title="0">return systemVersionToVO(result), nil</span>
-}
-
-// AcceptSystemVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.
-func AcceptSystemVersion(c context.Context, id string, version int, selectedFields []string, reviewedBy string, reviewNote *string) (*vo.SystemVersionVO, []string, error) <span class="cov0" title="0">{
-        result, conflicts, err := systemVersioning.acceptVersion(c, id, version, selectedFields, reviewedBy, reviewNote)
-        if err != nil || result == nil </span><span class="cov0" title="0">{
-                return nil, conflicts, err
-        }</span>
-        <span class="cov0" title="0">return systemVersionToVO(result), conflicts, nil</span>
-}
-
-// RejectSystemVersion marks a submitted version rejected.
-func RejectSystemVersion(c context.Context, id string, version int, reviewedBy string, reviewNote *string) error <span class="cov0" title="0">{
-        return systemVersioning.rejectVersion(c, id, version, reviewedBy, reviewNote)
-}</span>
-
-// RetractSystemVersion lets the original submitter withdraw their own pending submission.
-func RetractSystemVersion(c context.Context, id string, version int, submitterID string) (*vo.SystemVersionVO, error) <span class="cov0" title="0">{
-        result, err := systemVersioning.retractVersion(c, id, version, submitterID)
-        if err != nil || result == nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov0" title="0">return systemVersionToVO(result), nil</span>
-}
-
-// SetCurrentSystemVersion rolls a system back (or forward) to an arbitrary existing version.
-func SetCurrentSystemVersion(c context.Context, id string, version int) (*vo.SystemVersionVO, error) <span class="cov0" title="0">{
-        result, err := systemVersioning.setCurrentVersion(c, id, version)
-        if err != nil || result == nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov0" title="0">return systemVersionToVO(result), nil</span>
-}
-
-// CountSubmittedSystemVersionsBySubmitter counts a submitter's currently-pending versions.
-func CountSubmittedSystemVersionsBySubmitter(c context.Context, submittedBy string) (int64, error) <span class="cov0" title="0">{
-        return systemVersioning.countSubmittedBySubmitter(c, submittedBy)
-}</span>
-
-// QuerySystems lists the current (live) version of every system matching params.
-func QuerySystems(c context.Context, params apiutil.QueryParams) ([]*vo.SystemVO, error) <span class="cov0" title="0">{
-        filter, sort, projection := apiutil.ConvertQueryParams(params)
-        filter = append(filter, bson.E{Key: "deleted_at", Value: nil})
-        metas, err := database.Query[models.EntityMeta](systemMetaCollection, filter, sort, projection, params.Start, params.Limit)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov0" title="0">vos := make([]*vo.SystemVO, 0, len(metas))
-        for _, meta := range metas </span><span class="cov0" title="0">{
-                version, err := systemVersioning.getVersion(c, meta.ID, meta.CurrentVersion)
-                if err != nil </span><span class="cov0" title="0">{
-                        return nil, err
+                if _, ok := err.(gamesystems.NotFoundError); ok </span><span class="cov0" title="0">{
+                        return nil, nil
                 }</span>
-                <span class="cov0" title="0">if version == nil </span><span class="cov0" title="0">{
-                        continue</span>
-                }
-                <span class="cov0" title="0">vos = append(vos, flattenSystem(meta, version))</span>
+                <span class="cov0" title="0">return nil, err</span>
         }
-        <span class="cov0" title="0">return vos, nil</span>
+        <span class="cov0" title="0">return &amp;vo.SystemVO{
+                ID: system.ID, GameSystem: system.Name, Edition: system.Edition, Notes: system.Notes,
+                Tags: system.Tags,
+                AuditableVO: modelcorevo.AuditableVO{
+                        CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
+                        UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+                },
+        }, nil</span>
 }
 
-// MigrateSystems backfills every existing "systems" document into a meta record plus a single
-// live version - see MigratePublishers' doc comment. System never had a write path before this
-// change, so there's no pending-proposal migration counterpart to run alongside this.
-func MigrateSystems(c context.Context) (int, error) <span class="cov0" title="0">{
-        return migrateEntity(c, migrationConfig[models.System, models.SystemVersion]{
-                oldCollection: "systems",
-                versioning:    systemVersioning,
-                id:            func(s *models.System) string </span><span class="cov0" title="0">{ return s.ID }</span>,
-                auditable:     func(s *models.System) modelcore.Auditable <span class="cov0" title="0">{ return s.Auditable }</span>,
-                toVersion: func(s *models.System) models.SystemVersion <span class="cov0" title="0">{
-                        return models.SystemVersion{GameSystem: s.GameSystem, Edition: s.Edition, Notes: s.Notes, Tags: s.Tags}
-                }</span>,
-        })
-}
-
-// GetSystemStats returns the systems landing-page-summary card's count/most-recent data.
+// GetSystemStats returns the systems landing-page-summary card, computed by gamesystems-api.
 func GetSystemStats(c context.Context) (*TypeStats, error) <span class="cov0" title="0">{
-        return systemVersioning.stats(c)
-}</span>
+        if GameSystemsClient == nil </span><span class="cov0" title="0">{
+                return &amp;TypeStats{}, nil
+        }</span>
+        <span class="cov0" title="0">stats, err := GameSystemsClient.GetStats(c)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return &amp;TypeStats{
+                Count: stats.Count, LastUpdated: stats.LastUpdated,
+                MostRecentID: stats.MostRecentID, MostRecentName: stats.MostRecentName,
+        }, nil</span>
+}
 </pre>
 		
 		<pre class="file" id="file8" style="display: none">package data
@@ -3224,6 +3051,161 @@ func SetCurrentVolumeVersion(c context.Context, id string, version int) (*vo.Vol
 
         <span class="cov1" title="1">target.State = models.VersionStateLive
         return volumeVersionModelToVO(c, target), nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">// Package gamesystems is a minimal client for gamesystems-api's read endpoints, used by the
+// data package to resolve a Volume's system references at read time instead of storing its own
+// copy of system data. See platform's game-systems-catalog spec
+// (openspec/changes/game-systems-service in sweetrpg/platform).
+package gamesystems
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "net/http"
+        "time"
+
+        modelcore "github.com/sweetrpg/model-core.go/vo"
+        "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+)
+
+// Client calls gamesystems-api's read endpoints.
+type Client struct {
+        baseURL string
+        http    *http.Client
+}
+
+// NewClient builds a Client against gamesystems-api's base URL. An empty baseURL is accepted so
+// the service can still start when GAMESYSTEMS_API_URL isn't configured; every call will then
+// fail with a transport error, which callers already skip-and-log.
+func NewClient(baseURL string) *Client <span class="cov10" title="2">{
+        return &amp;Client{
+                baseURL: baseURL,
+                http: &amp;http.Client{
+                        Timeout:   5 * time.Second,
+                        Transport: otelhttp.NewTransport(http.DefaultTransport),
+                },
+        }
+}</span>
+
+// NotFoundError means gamesystems-api has no game system at the given id.
+type NotFoundError struct{ ID string }
+
+func (e NotFoundError) Error() string <span class="cov0" title="0">{ return fmt.Sprintf("gamesystems: %s not found", e.ID) }</span>
+
+// gameSystemResponse is gamesystems-api's flattened GET /systems(/:id) response shape (its
+// models.GameSystemVersion, JSON-tagged) - only the fields this client needs are declared here.
+type gameSystemResponse struct {
+        RecordID string `json:"record_id"`
+        Name     string `json:"name"`
+        Edition  string `json:"edition"`
+        Notes    string `json:"notes"`
+        Tags     []struct {
+                Name  string `json:"name"`
+                Value string `json:"value"`
+        } `json:"tags"`
+        SubmittedBy string    `json:"submitted_by"`
+        SubmittedAt time.Time `json:"submitted_at"`
+}
+
+// System is the resolved shape a caller needs to fill in a volume's system reference.
+type System struct {
+        ID        string
+        Name      string
+        Edition   string
+        Notes     string
+        Tags      []modelcore.TagVO
+        CreatedBy string
+        CreatedAt time.Time
+}
+
+// Get resolves one game system by id against its current (live) version.
+func (c *Client) Get(ctx context.Context, id string) (*System, error) <span class="cov1" title="1">{
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/systems/"+id, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("gamesystems: build get request: %w", err)
+        }</span>
+
+        <span class="cov1" title="1">resp, err := c.http.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("gamesystems: get request failed: %w", err)
+        }</span>
+        <span class="cov1" title="1">defer func() </span><span class="cov1" title="1">{ _ = resp.Body.Close() }</span>()
+
+        <span class="cov1" title="1">if resp.StatusCode == http.StatusNotFound </span><span class="cov1" title="1">{
+                return nil, NotFoundError{ID: id}
+        }</span>
+        <span class="cov0" title="0">if resp.StatusCode != http.StatusOK </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("gamesystems: unexpected status %d from get %s", resp.StatusCode, id)
+        }</span>
+
+        <span class="cov0" title="0">var body gameSystemResponse
+        if err := json.NewDecoder(resp.Body).Decode(&amp;body); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("gamesystems: decode get response: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return &amp;System{
+                ID: body.RecordID, Name: body.Name, Edition: body.Edition, Notes: body.Notes,
+                Tags: toTagVOs(body.Tags), CreatedBy: body.SubmittedBy, CreatedAt: body.SubmittedAt,
+        }, nil</span>
+}
+
+// Stats is the catalog-landing-page-summary card gamesystems-api backs: a live-record count
+// plus the single most recently submitted live record.
+type Stats struct {
+        Count          int
+        LastUpdated    *time.Time
+        MostRecentID   string
+        MostRecentName string
+}
+
+// GetStats computes Stats from GET /systems (every live game system's current version) - no
+// dedicated stats endpoint on gamesystems-api yet, and system counts are small enough that
+// computing this client-side is simpler than adding one. Revisit if that stops being true.
+func (c *Client) GetStats(ctx context.Context) (*Stats, error) <span class="cov1" title="1">{
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/systems", nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("gamesystems: build list request: %w", err)
+        }</span>
+
+        <span class="cov1" title="1">resp, err := c.http.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("gamesystems: list request failed: %w", err)
+        }</span>
+        <span class="cov1" title="1">defer func() </span><span class="cov1" title="1">{ _ = resp.Body.Close() }</span>()
+
+        <span class="cov1" title="1">if resp.StatusCode != http.StatusOK </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("gamesystems: unexpected status %d from list", resp.StatusCode)
+        }</span>
+
+        <span class="cov1" title="1">var all []gameSystemResponse
+        if err := json.NewDecoder(resp.Body).Decode(&amp;all); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("gamesystems: decode list response: %w", err)
+        }</span>
+
+        <span class="cov1" title="1">stats := &amp;Stats{Count: len(all)}
+        for _, gs := range all </span><span class="cov10" title="2">{
+                if stats.LastUpdated == nil || gs.SubmittedAt.After(*stats.LastUpdated) </span><span class="cov10" title="2">{
+                        submittedAt := gs.SubmittedAt
+                        stats.LastUpdated = &amp;submittedAt
+                        stats.MostRecentID = gs.RecordID
+                        stats.MostRecentName = gs.Name
+                }</span>
+        }
+        <span class="cov1" title="1">return stats, nil</span>
+}
+
+func toTagVOs(tags []struct {
+        Name  string `json:"name"`
+        Value string `json:"value"`
+}) []modelcore.TagVO <span class="cov0" title="0">{
+        out := make([]modelcore.TagVO, 0, len(tags))
+        for _, t := range tags </span><span class="cov0" title="0">{
+                out = append(out, modelcore.TagVO{Name: t.Name, Value: t.Value})
+        }</span>
+        <span class="cov0" title="0">return out</span>
 }
 </pre>
 		
