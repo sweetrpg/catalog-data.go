@@ -12,6 +12,7 @@ import (
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
@@ -42,6 +43,17 @@ var studioVersioning = entityVersioningConfig[models.StudioVersion]{
 // on every startup.
 func EnsureStudioVersioningIndexes(c context.Context) error {
 	return studioVersioning.ensureIndexes(c)
+}
+
+// SoftDeleteStudio hides a studio from every Query*/List* read without touching its version
+// history - see design.md's soft-delete decision.
+func SoftDeleteStudio(c context.Context, id string, deletedBy string) error {
+	return studioVersioning.softDelete(c, id, deletedBy)
+}
+
+// RestoreStudio clears a soft-deleted studio's deletion, returning it to every normal read path.
+func RestoreStudio(c context.Context, id string) error {
+	return studioVersioning.restore(c, id)
 }
 
 func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO {
@@ -177,6 +189,7 @@ func CountSubmittedStudioVersionsBySubmitter(c context.Context, submittedBy stri
 // QueryStudios lists the current (live) version of every studio matching params.
 func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) {
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
+	filter = append(filter, bson.E{Key: "deleted_at", Value: nil})
 	metas, err := database.Query[models.EntityMeta](studioMetaCollection, filter, sort, projection, params.Start, params.Limit)
 	if err != nil {
 		return nil, err

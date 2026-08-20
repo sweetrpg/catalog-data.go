@@ -12,6 +12,7 @@ import (
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
@@ -48,6 +49,17 @@ var licenseVersioning = entityVersioningConfig[models.LicenseVersion]{
 // call on every startup.
 func EnsureLicenseVersioningIndexes(c context.Context) error {
 	return licenseVersioning.ensureIndexes(c)
+}
+
+// SoftDeleteLicense hides a license from every Query*/List* read without touching its version
+// history - see design.md's soft-delete decision.
+func SoftDeleteLicense(c context.Context, id string, deletedBy string) error {
+	return licenseVersioning.softDelete(c, id, deletedBy)
+}
+
+// RestoreLicense clears a soft-deleted license's deletion, returning it to every normal read path.
+func RestoreLicense(c context.Context, id string) error {
+	return licenseVersioning.restore(c, id)
 }
 
 func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO {
@@ -189,6 +201,7 @@ func CountSubmittedLicenseVersionsBySubmitter(c context.Context, submittedBy str
 // QueryLicenses lists the current (live) version of every license matching params.
 func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) {
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
+	filter = append(filter, bson.E{Key: "deleted_at", Value: nil})
 	metas, err := database.Query[models.EntityMeta](licenseMetaCollection, filter, sort, projection, params.Start, params.Limit)
 	if err != nil {
 		return nil, err
