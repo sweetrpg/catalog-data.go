@@ -1,4 +1,11 @@
 
+## 0.11.0 - 2026-08-20
+
+### Added
+- Filter deleted entities from Query*/List*, add SoftDelete/Restore
+
+
+
 ## 0.10.0 - 2026-08-19
 
 ### Added
