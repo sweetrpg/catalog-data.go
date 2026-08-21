@@ -59,15 +59,15 @@
 				
 				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (58.9%)</option>
 				
-				<option value="file2">github.com/sweetrpg/catalog-data.go/data/license_versioning.go (24.8%)</option>
+				<option value="file2">github.com/sweetrpg/catalog-data.go/data/license_versioning.go (22.7%)</option>
 				
-				<option value="file3">github.com/sweetrpg/catalog-data.go/data/person_versioning.go (28.7%)</option>
+				<option value="file3">github.com/sweetrpg/catalog-data.go/data/person_versioning.go (26.0%)</option>
 				
-				<option value="file4">github.com/sweetrpg/catalog-data.go/data/publisher_versioning.go (68.1%)</option>
+				<option value="file4">github.com/sweetrpg/catalog-data.go/data/publisher_versioning.go (62.0%)</option>
 				
 				<option value="file5">github.com/sweetrpg/catalog-data.go/data/review.go (0.0%)</option>
 				
-				<option value="file6">github.com/sweetrpg/catalog-data.go/data/studio_versioning.go (31.5%)</option>
+				<option value="file6">github.com/sweetrpg/catalog-data.go/data/studio_versioning.go (28.6%)</option>
 				
 				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_client.go (0.0%)</option>
 				
@@ -859,6 +859,7 @@ func migrateEntity[Old any, New any](c context.Context, cfg migrationConfig[Old,
 import (
         "context"
         "net/url"
+        "strings"
         "time"
 
         apiutil "github.com/sweetrpg/api-core.go/util"
@@ -1076,6 +1077,24 @@ func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.License
         <span class="cov0" title="0">return vos, nil</span>
 }
 
+// SearchLicenses finds live licenses whose title contains query (case-insensitive), scanning the
+// full collection - see data.SearchPersons for why this scans in memory rather than pushing the
+// match down to Mongo.
+func SearchLicenses(c context.Context, query string) ([]*vo.LicenseVO, error) <span class="cov0" title="0">{
+        all, err := QueryLicenses(c, apiutil.QueryParams{Limit: searchScanLimit})
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">needle := strings.ToLower(query)
+        matches := make([]*vo.LicenseVO, 0, len(all))
+        for _, l := range all </span><span class="cov0" title="0">{
+                if strings.Contains(strings.ToLower(l.Title), needle) </span><span class="cov0" title="0">{
+                        matches = append(matches, l)
+                }</span>
+        }
+        <span class="cov0" title="0">return matches, nil</span>
+}
+
 // CreateSubmittedLicenseVersion creates a submitted version stamped with a caller-supplied
 // submittedBy/submittedAt - see CreateSubmittedPublisherVersion's doc comment.
 func CreateSubmittedLicenseVersion(c context.Context, id string, license *vo.LicenseVO, submittedBy string, submittedAt time.Time) (*vo.LicenseVersionVO, error) <span class="cov0" title="0">{
@@ -1116,6 +1135,7 @@ func GetLicenseStats(c context.Context) (*TypeStats, error) <span class="cov0" t
 
 import (
         "context"
+        "strings"
         "time"
 
         apiutil "github.com/sweetrpg/api-core.go/util"
@@ -1320,6 +1340,32 @@ func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO
         <span class="cov0" title="0">return vos, nil</span>
 }
 
+// searchScanLimit bounds how many live persons SearchPersons scans in memory - name isn't a
+// field on personMetaCollection (it only lives on the version document QueryPersons resolves
+// per-meta), so there's no index-backed way to push a substring match down to Mongo without a
+// denormalization this doesn't attempt yet. High enough to cover the whole collection at its
+// current size (low hundreds) with room to grow; revisit if persons ever reaches this scale.
+const searchScanLimit = 5000
+
+// SearchPersons finds live persons whose name contains query (case-insensitive), scanning the
+// full collection rather than just whatever page a plain QueryPersons call would return -
+// backs catalog-api's /persons/search route, used by autocomplete/picker inputs instead of the
+// page-capped list-and-filter-client-side approach every other picker used before this existed.
+func SearchPersons(c context.Context, query string) ([]*vo.PersonVO, error) <span class="cov0" title="0">{
+        all, err := QueryPersons(c, apiutil.QueryParams{Limit: searchScanLimit})
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">needle := strings.ToLower(query)
+        matches := make([]*vo.PersonVO, 0, len(all))
+        for _, p := range all </span><span class="cov0" title="0">{
+                if strings.Contains(strings.ToLower(p.Name), needle) </span><span class="cov0" title="0">{
+                        matches = append(matches, p)
+                }</span>
+        }
+        <span class="cov0" title="0">return matches, nil</span>
+}
+
 // CreateSubmittedPersonVersion creates a submitted version stamped with a caller-supplied
 // submittedBy/submittedAt - see CreateSubmittedPublisherVersion's doc comment.
 func CreateSubmittedPersonVersion(c context.Context, id string, person *vo.PersonVO, submittedBy string, submittedAt time.Time) (*vo.PersonVersionVO, error) <span class="cov0" title="0">{
@@ -1358,6 +1404,7 @@ func GetPersonStats(c context.Context) (*TypeStats, error) <span class="cov0" ti
 import (
         "context"
         "net/url"
+        "strings"
         "time"
 
         apiutil "github.com/sweetrpg/api-core.go/util"
@@ -1568,6 +1615,24 @@ func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.Publi
         <span class="cov2" title="2">return vos, nil</span>
 }
 
+// SearchPublishers finds live publishers whose name contains query (case-insensitive), scanning
+// the full collection - see data.SearchPersons for why this scans in memory rather than pushing
+// the match down to Mongo.
+func SearchPublishers(c context.Context, query string) ([]*vo.PublisherVO, error) <span class="cov0" title="0">{
+        all, err := QueryPublishers(c, apiutil.QueryParams{Limit: searchScanLimit})
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">needle := strings.ToLower(query)
+        matches := make([]*vo.PublisherVO, 0, len(all))
+        for _, p := range all </span><span class="cov0" title="0">{
+                if strings.Contains(strings.ToLower(p.Name), needle) </span><span class="cov0" title="0">{
+                        matches = append(matches, p)
+                }</span>
+        }
+        <span class="cov0" title="0">return matches, nil</span>
+}
+
 // CreateSubmittedPublisherVersion creates a submitted version stamped with a caller-supplied
 // submittedBy/submittedAt - for migrating a pre-versioning proposed_changes entry into the
 // version model, preserving the original proposal's submission audit (see
@@ -1690,6 +1755,7 @@ func QueryReviews(c context.Context, params apiutil.QueryParams) ([]*vo.ReviewVO
 import (
         "context"
         "net/url"
+        "strings"
         "time"
 
         apiutil "github.com/sweetrpg/api-core.go/util"
@@ -1895,6 +1961,24 @@ func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO
         <span class="cov0" title="0">return vos, nil</span>
 }
 
+// SearchStudios finds live studios whose name contains query (case-insensitive), scanning the
+// full collection - see data.SearchPersons for why this scans in memory rather than pushing the
+// match down to Mongo.
+func SearchStudios(c context.Context, query string) ([]*vo.StudioVO, error) <span class="cov0" title="0">{
+        all, err := QueryStudios(c, apiutil.QueryParams{Limit: searchScanLimit})
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">needle := strings.ToLower(query)
+        matches := make([]*vo.StudioVO, 0, len(all))
+        for _, s := range all </span><span class="cov0" title="0">{
+                if strings.Contains(strings.ToLower(s.Name), needle) </span><span class="cov0" title="0">{
+                        matches = append(matches, s)
+                }</span>
+        }
+        <span class="cov0" title="0">return matches, nil</span>
+}
+
 // CreateSubmittedStudioVersion creates a submitted version stamped with a caller-supplied
 // submittedBy/submittedAt - see CreateSubmittedPublisherVersion's doc comment.
 func CreateSubmittedStudioVersion(c context.Context, id string, studio *vo.StudioVO, submittedBy string, submittedAt time.Time) (*vo.StudioVersionVO, error) <span class="cov0" title="0">{
@@ -1933,6 +2017,7 @@ func GetStudioStats(c context.Context) (*TypeStats, error) <span class="cov3" ti
 
 import (
         "context"
+        "strings"
 
         "github.com/sweetrpg/catalog-data.go/gamesystems"
         "github.com/sweetrpg/catalog-objects.go/vo"
@@ -1991,6 +2076,24 @@ func QuerySystems(c context.Context) ([]*vo.SystemVO, error) <span class="cov0" 
                 }
         }</span>
         <span class="cov0" title="0">return vos, nil</span>
+}
+
+// SearchSystems finds live game systems whose name contains query (case-insensitive) - same
+// scan-in-memory approach as data.SearchPersons, over gamesystems-api's full live list rather
+// than a Mongo collection (there is no local collection for Systems to query).
+func SearchSystems(c context.Context, query string) ([]*vo.SystemVO, error) <span class="cov0" title="0">{
+        all, err := QuerySystems(c)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">needle := strings.ToLower(query)
+        matches := make([]*vo.SystemVO, 0, len(all))
+        for _, s := range all </span><span class="cov0" title="0">{
+                if strings.Contains(strings.ToLower(s.GameSystem), needle) </span><span class="cov0" title="0">{
+                        matches = append(matches, s)
+                }</span>
+        }
+        <span class="cov0" title="0">return matches, nil</span>
 }
 
 // GetSystemStats returns the systems landing-page-summary card, computed by gamesystems-api.
