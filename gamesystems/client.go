@@ -96,19 +96,10 @@ func (c *Client) Get(ctx context.Context, id string) (*System, error) {
 	}, nil
 }
 
-// Stats is the catalog-landing-page-summary card gamesystems-api backs: a live-record count
-// plus the single most recently submitted live record.
-type Stats struct {
-	Count          int
-	LastUpdated    *time.Time
-	MostRecentID   string
-	MostRecentName string
-}
-
-// GetStats computes Stats from GET /systems (every live game system's current version) - no
-// dedicated stats endpoint on gamesystems-api yet, and system counts are small enough that
-// computing this client-side is simpler than adding one. Revisit if that stops being true.
-func (c *Client) GetStats(ctx context.Context) (*Stats, error) {
+// List resolves every live game system against gamesystems-api's current versions - backs
+// catalog-api's /systems list route (the autocomplete/picker source for a volume's system
+// associations) as well as GetStats below.
+func (c *Client) List(ctx context.Context) ([]*System, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/systems", nil)
 	if err != nil {
 		return nil, fmt.Errorf("gamesystems: build list request: %w", err)
@@ -129,13 +120,41 @@ func (c *Client) GetStats(ctx context.Context) (*Stats, error) {
 		return nil, fmt.Errorf("gamesystems: decode list response: %w", err)
 	}
 
-	stats := &Stats{Count: len(all)}
-	for _, gs := range all {
-		if stats.LastUpdated == nil || gs.SubmittedAt.After(*stats.LastUpdated) {
-			submittedAt := gs.SubmittedAt
-			stats.LastUpdated = &submittedAt
-			stats.MostRecentID = gs.RecordID
-			stats.MostRecentName = gs.Name
+	systems := make([]*System, len(all))
+	for i, gs := range all {
+		systems[i] = &System{
+			ID: gs.RecordID, Name: gs.Name, Edition: gs.Edition, Notes: gs.Notes,
+			Tags: toTagVOs(gs.Tags), CreatedBy: gs.SubmittedBy, CreatedAt: gs.SubmittedAt,
+		}
+	}
+	return systems, nil
+}
+
+// Stats is the catalog-landing-page-summary card gamesystems-api backs: a live-record count
+// plus the single most recently submitted live record.
+type Stats struct {
+	Count          int
+	LastUpdated    *time.Time
+	MostRecentID   string
+	MostRecentName string
+}
+
+// GetStats computes Stats from List - no dedicated stats endpoint on gamesystems-api yet, and
+// system counts are small enough that computing this client-side is simpler than adding one.
+// Revisit if that stops being true.
+func (c *Client) GetStats(ctx context.Context) (*Stats, error) {
+	systems, err := c.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &Stats{Count: len(systems)}
+	for _, s := range systems {
+		if stats.LastUpdated == nil || s.CreatedAt.After(*stats.LastUpdated) {
+			createdAt := s.CreatedAt
+			stats.LastUpdated = &createdAt
+			stats.MostRecentID = s.ID
+			stats.MostRecentName = s.Name
 		}
 	}
 	return stats, nil
