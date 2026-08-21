@@ -77,7 +77,7 @@
 				
 				<option value="file10">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (64.6%)</option>
 				
-				<option value="file11">github.com/sweetrpg/catalog-data.go/gamesystems/client.go (60.5%)</option>
+				<option value="file11">github.com/sweetrpg/catalog-data.go/gamesystems/client.go (70.0%)</option>
 				
 				</select>
 			</div>
@@ -1968,6 +1968,31 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) <span class="
         }, nil</span>
 }
 
+// QuerySystems lists every live game system against gamesystems-api's current versions. Backs
+// catalog-api's /systems list route - a nil GameSystemsClient (unconfigured GAMESYSTEMS_API_URL)
+// degrades to an empty list rather than an error, matching GetSystem's fail-open convention.
+func QuerySystems(c context.Context) ([]*vo.SystemVO, error) <span class="cov0" title="0">{
+        if GameSystemsClient == nil </span><span class="cov0" title="0">{
+                return []*vo.SystemVO{}, nil
+        }</span>
+        <span class="cov0" title="0">systems, err := GameSystemsClient.List(c)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">vos := make([]*vo.SystemVO, len(systems))
+        for i, system := range systems </span><span class="cov0" title="0">{
+                vos[i] = &amp;vo.SystemVO{
+                        ID: system.ID, GameSystem: system.Name, Edition: system.Edition, Notes: system.Notes,
+                        Tags: system.Tags,
+                        AuditableVO: modelcorevo.AuditableVO{
+                                CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
+                                UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+                        },
+                }
+        }</span>
+        <span class="cov0" title="0">return vos, nil</span>
+}
+
 // GetSystemStats returns the systems landing-page-summary card, computed by gamesystems-api.
 func GetSystemStats(c context.Context) (*TypeStats, error) <span class="cov0" title="0">{
         if GameSystemsClient == nil </span><span class="cov0" title="0">{
@@ -3152,19 +3177,10 @@ func (c *Client) Get(ctx context.Context, id string) (*System, error) <span clas
         }, nil</span>
 }
 
-// Stats is the catalog-landing-page-summary card gamesystems-api backs: a live-record count
-// plus the single most recently submitted live record.
-type Stats struct {
-        Count          int
-        LastUpdated    *time.Time
-        MostRecentID   string
-        MostRecentName string
-}
-
-// GetStats computes Stats from GET /systems (every live game system's current version) - no
-// dedicated stats endpoint on gamesystems-api yet, and system counts are small enough that
-// computing this client-side is simpler than adding one. Revisit if that stops being true.
-func (c *Client) GetStats(ctx context.Context) (*Stats, error) <span class="cov1" title="1">{
+// List resolves every live game system against gamesystems-api's current versions - backs
+// catalog-api's /systems list route (the autocomplete/picker source for a volume's system
+// associations) as well as GetStats below.
+func (c *Client) List(ctx context.Context) ([]*System, error) <span class="cov1" title="1">{
         req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/systems", nil)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("gamesystems: build list request: %w", err)
@@ -3185,13 +3201,41 @@ func (c *Client) GetStats(ctx context.Context) (*Stats, error) <span class="cov1
                 return nil, fmt.Errorf("gamesystems: decode list response: %w", err)
         }</span>
 
-        <span class="cov1" title="1">stats := &amp;Stats{Count: len(all)}
-        for _, gs := range all </span><span class="cov10" title="2">{
-                if stats.LastUpdated == nil || gs.SubmittedAt.After(*stats.LastUpdated) </span><span class="cov10" title="2">{
-                        submittedAt := gs.SubmittedAt
-                        stats.LastUpdated = &amp;submittedAt
-                        stats.MostRecentID = gs.RecordID
-                        stats.MostRecentName = gs.Name
+        <span class="cov1" title="1">systems := make([]*System, len(all))
+        for i, gs := range all </span><span class="cov10" title="2">{
+                systems[i] = &amp;System{
+                        ID: gs.RecordID, Name: gs.Name, Edition: gs.Edition, Notes: gs.Notes,
+                        Tags: toTagVOs(gs.Tags), CreatedBy: gs.SubmittedBy, CreatedAt: gs.SubmittedAt,
+                }
+        }</span>
+        <span class="cov1" title="1">return systems, nil</span>
+}
+
+// Stats is the catalog-landing-page-summary card gamesystems-api backs: a live-record count
+// plus the single most recently submitted live record.
+type Stats struct {
+        Count          int
+        LastUpdated    *time.Time
+        MostRecentID   string
+        MostRecentName string
+}
+
+// GetStats computes Stats from List - no dedicated stats endpoint on gamesystems-api yet, and
+// system counts are small enough that computing this client-side is simpler than adding one.
+// Revisit if that stops being true.
+func (c *Client) GetStats(ctx context.Context) (*Stats, error) <span class="cov1" title="1">{
+        systems, err := c.List(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov1" title="1">stats := &amp;Stats{Count: len(systems)}
+        for _, s := range systems </span><span class="cov10" title="2">{
+                if stats.LastUpdated == nil || s.CreatedAt.After(*stats.LastUpdated) </span><span class="cov10" title="2">{
+                        createdAt := s.CreatedAt
+                        stats.LastUpdated = &amp;createdAt
+                        stats.MostRecentID = s.ID
+                        stats.MostRecentName = s.Name
                 }</span>
         }
         <span class="cov1" title="1">return stats, nil</span>
@@ -3200,12 +3244,12 @@ func (c *Client) GetStats(ctx context.Context) (*Stats, error) <span class="cov1
 func toTagVOs(tags []struct {
         Name  string `json:"name"`
         Value string `json:"value"`
-}) []modelcore.TagVO <span class="cov0" title="0">{
+}) []modelcore.TagVO <span class="cov10" title="2">{
         out := make([]modelcore.TagVO, 0, len(tags))
         for _, t := range tags </span><span class="cov0" title="0">{
                 out = append(out, modelcore.TagVO{Name: t.Name, Value: t.Value})
         }</span>
-        <span class="cov0" title="0">return out</span>
+        <span class="cov10" title="2">return out</span>
 }
 </pre>
 		
