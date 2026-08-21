@@ -1,4 +1,11 @@
 
+## 0.14.1 - 2026-08-21
+
+### Fixed
+- Batch-resolve system references for QueryVolumes instead of per-volume calls
+
+
+
 ## 0.14.0 - 2026-08-21
 
 ### Added
