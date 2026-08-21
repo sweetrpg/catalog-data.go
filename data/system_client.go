@@ -37,6 +37,31 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) {
 	}, nil
 }
 
+// QuerySystems lists every live game system against gamesystems-api's current versions. Backs
+// catalog-api's /systems list route - a nil GameSystemsClient (unconfigured GAMESYSTEMS_API_URL)
+// degrades to an empty list rather than an error, matching GetSystem's fail-open convention.
+func QuerySystems(c context.Context) ([]*vo.SystemVO, error) {
+	if GameSystemsClient == nil {
+		return []*vo.SystemVO{}, nil
+	}
+	systems, err := GameSystemsClient.List(c)
+	if err != nil {
+		return nil, err
+	}
+	vos := make([]*vo.SystemVO, len(systems))
+	for i, system := range systems {
+		vos[i] = &vo.SystemVO{
+			ID: system.ID, GameSystem: system.Name, Edition: system.Edition, Notes: system.Notes,
+			Tags: system.Tags,
+			AuditableVO: modelcorevo.AuditableVO{
+				CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
+				UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+			},
+		}
+	}
+	return vos, nil
+}
+
 // GetSystemStats returns the systems landing-page-summary card, computed by gamesystems-api.
 func GetSystemStats(c context.Context) (*TypeStats, error) {
 	if GameSystemsClient == nil {
