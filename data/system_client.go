@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 
 	"github.com/sweetrpg/catalog-data.go/gamesystems"
 	"github.com/sweetrpg/catalog-objects.go/vo"
@@ -60,6 +61,24 @@ func QuerySystems(c context.Context) ([]*vo.SystemVO, error) {
 		}
 	}
 	return vos, nil
+}
+
+// SearchSystems finds live game systems whose name contains query (case-insensitive) - same
+// scan-in-memory approach as data.SearchPersons, over gamesystems-api's full live list rather
+// than a Mongo collection (there is no local collection for Systems to query).
+func SearchSystems(c context.Context, query string) ([]*vo.SystemVO, error) {
+	all, err := QuerySystems(c)
+	if err != nil {
+		return nil, err
+	}
+	needle := strings.ToLower(query)
+	matches := make([]*vo.SystemVO, 0, len(all))
+	for _, s := range all {
+		if strings.Contains(strings.ToLower(s.GameSystem), needle) {
+			matches = append(matches, s)
+		}
+	}
+	return matches, nil
 }
 
 // GetSystemStats returns the systems landing-page-summary card, computed by gamesystems-api.
