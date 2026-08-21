@@ -1,4 +1,12 @@
 
+## 0.14.0 - 2026-08-21
+
+### Added
+- Add SearchPersons for name-substring search
+- Extend name-substring search to publishers, studios, licenses, systems
+
+
+
 ## 0.13.0 - 2026-08-21
 
 ### Added
