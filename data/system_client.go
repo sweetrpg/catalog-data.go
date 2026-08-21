@@ -81,6 +81,32 @@ func SearchSystems(c context.Context, query string) ([]*vo.SystemVO, error) {
 	return matches, nil
 }
 
+// GetSystemsMap resolves every live game system in one call, keyed by ID - lets a caller
+// resolving many volumes' system references (e.g. QueryVolumes) do it with a single
+// gamesystems-api round trip instead of one per volume. Returns an empty (non-nil) map, not an
+// error, when the client isn't configured, matching GetSystem's fail-open behavior.
+func GetSystemsMap(c context.Context) (map[string]*vo.SystemVO, error) {
+	if GameSystemsClient == nil {
+		return map[string]*vo.SystemVO{}, nil
+	}
+	systems, err := GameSystemsClient.List(c)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]*vo.SystemVO, len(systems))
+	for _, system := range systems {
+		m[system.ID] = &vo.SystemVO{
+			ID: system.ID, GameSystem: system.Name, Edition: system.Edition, Notes: system.Notes,
+			Tags: system.Tags,
+			AuditableVO: modelcorevo.AuditableVO{
+				CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
+				UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+			},
+		}
+	}
+	return m, nil
+}
+
 // GetSystemStats returns the systems landing-page-summary card, computed by gamesystems-api.
 func GetSystemStats(c context.Context) (*TypeStats, error) {
 	if GameSystemsClient == nil {
