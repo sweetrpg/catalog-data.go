@@ -191,7 +191,7 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 		return nil, err
 	}
 
-	return flattenVolume(c, meta, version), nil
+	return flattenVolume(c, meta, version, nil), nil
 }
 
 // relationIDs extracts each element's ID from a pointer-slice relationship field - the
@@ -208,11 +208,22 @@ func relationIDs[T any](relations []*T, id func(*T) string) []string {
 	return ids
 }
 
-func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioIds, licenseIds []string) (
+// resolveVolumeRelations resolves a volume's relationship IDs into their VOs. systemsMap, when
+// non-nil, is used as a pre-fetched id->system lookup instead of one gamesystems-api call per
+// id - callers resolving many volumes at once (QueryVolumes) build it once via GetSystemsMap and
+// share it across every volume; callers resolving a single volume pass nil and fall back to
+// GetSystem's per-id call, which is cheap enough at that scale.
+func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioIds, licenseIds []string, systemsMap map[string]*vo.SystemVO) (
 	systems []*vo.SystemVO, publishers []*vo.PublisherVO, studios []*vo.StudioVO, licenses []*vo.LicenseVO,
 ) {
 	systems = make([]*vo.SystemVO, 0, len(systemIds))
 	for _, id := range systemIds {
+		if systemsMap != nil {
+			if system, ok := systemsMap[id]; ok {
+				systems = append(systems, system)
+			}
+			continue
+		}
 		system, err := GetSystem(c, id)
 		if err != nil {
 			logging.Logger.Error(fmt.Sprintf("No System found from Volume for ID %s: %s", id, err.Error()))
@@ -261,8 +272,8 @@ func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioId
 // flattenVolume merges a meta record with its current version into the pre-versioning VolumeVO
 // shape: creation/deletion audit comes from meta, the "last updated" audit comes from the
 // version's own submission audit (its most recent live edit).
-func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO {
-	systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds)
+func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion, systemsMap map[string]*vo.SystemVO) *vo.VolumeVO {
+	systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds, systemsMap)
 
 	return &vo.VolumeVO{
 		ID:             meta.ID,
@@ -292,7 +303,7 @@ func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.V
 // volumeVersionModelToVO converts a version record on its own (no meta) into the version-history
 // API shape, resolving its relationship IDs the same way a flattened read does.
 func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *vo.VolumeVersionVO {
-	systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds)
+	systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds, nil)
 
 	return &vo.VolumeVersionVO{
 		ID:                   version.ID,
@@ -369,6 +380,15 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 		return nil, err
 	}
 
+	// Resolve every volume's system reference against one shared map instead of one
+	// gamesystems-api call per volume - see GetSystemsMap. A page of volumes was measured
+	// taking 10+ seconds under the old per-volume GetSystem calls.
+	systemsMap, err := GetSystemsMap(c)
+	if err != nil {
+		logging.Logger.Error(fmt.Sprintf("Error while fetching systems map for Volumes: %+v", err))
+		systemsMap = map[string]*vo.SystemVO{}
+	}
+
 	vos := make([]*vo.VolumeVO, 0, len(versions))
 	for _, version := range versions {
 		meta, err := getVolumeMeta(c, version.RecordID)
@@ -383,7 +403,7 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 		if meta.DeletedAt != nil {
 			continue
 		}
-		vos = append(vos, flattenVolume(c, meta, version))
+		vos = append(vos, flattenVolume(c, meta, version, systemsMap))
 	}
 
 	logging.Logger.Debug("returning volume value objects", "vos", vos)
