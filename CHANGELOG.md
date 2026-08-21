@@ -1,4 +1,11 @@
 
+## 0.13.0 - 2026-08-21
+
+### Added
+- Add QuerySystems, backing catalog-api's missing /systems list route
+
+
+
 ## 0.12.0 - 2026-08-20
 
 ### Added
