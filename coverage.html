@@ -69,9 +69,9 @@
 				
 				<option value="file6">github.com/sweetrpg/catalog-data.go/data/studio_versioning.go (28.6%)</option>
 				
-				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_client.go (0.0%)</option>
+				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_client.go (4.9%)</option>
 				
-				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (61.7%)</option>
+				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (60.2%)</option>
 				
 				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
 				
@@ -2096,6 +2096,32 @@ func SearchSystems(c context.Context, query string) ([]*vo.SystemVO, error) <spa
         <span class="cov0" title="0">return matches, nil</span>
 }
 
+// GetSystemsMap resolves every live game system in one call, keyed by ID - lets a caller
+// resolving many volumes' system references (e.g. QueryVolumes) do it with a single
+// gamesystems-api round trip instead of one per volume. Returns an empty (non-nil) map, not an
+// error, when the client isn't configured, matching GetSystem's fail-open behavior.
+func GetSystemsMap(c context.Context) (map[string]*vo.SystemVO, error) <span class="cov10" title="8">{
+        if GameSystemsClient == nil </span><span class="cov10" title="8">{
+                return map[string]*vo.SystemVO{}, nil
+        }</span>
+        <span class="cov0" title="0">systems, err := GameSystemsClient.List(c)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">m := make(map[string]*vo.SystemVO, len(systems))
+        for _, system := range systems </span><span class="cov0" title="0">{
+                m[system.ID] = &amp;vo.SystemVO{
+                        ID: system.ID, GameSystem: system.Name, Edition: system.Edition, Notes: system.Notes,
+                        Tags: system.Tags,
+                        AuditableVO: modelcorevo.AuditableVO{
+                                CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
+                                UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+                        },
+                }
+        }</span>
+        <span class="cov0" title="0">return m, nil</span>
+}
+
 // GetSystemStats returns the systems landing-page-summary card, computed by gamesystems-api.
 func GetSystemStats(c context.Context) (*TypeStats, error) <span class="cov0" title="0">{
         if GameSystemsClient == nil </span><span class="cov0" title="0">{
@@ -2305,7 +2331,7 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="
                 return nil, err
         }</span>
 
-        <span class="cov5" title="17">return flattenVolume(c, meta, version), nil</span>
+        <span class="cov5" title="17">return flattenVolume(c, meta, version, nil), nil</span>
 }
 
 // relationIDs extracts each element's ID from a pointer-slice relationship field - the
@@ -2322,12 +2348,23 @@ func relationIDs[T any](relations []*T, id func(*T) string) []string <span class
         <span class="cov10" title="204">return ids</span>
 }
 
-func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioIds, licenseIds []string) (
+// resolveVolumeRelations resolves a volume's relationship IDs into their VOs. systemsMap, when
+// non-nil, is used as a pre-fetched id-&gt;system lookup instead of one gamesystems-api call per
+// id - callers resolving many volumes at once (QueryVolumes) build it once via GetSystemsMap and
+// share it across every volume; callers resolving a single volume pass nil and fall back to
+// GetSystem's per-id call, which is cheap enough at that scale.
+func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioIds, licenseIds []string, systemsMap map[string]*vo.SystemVO) (
         systems []*vo.SystemVO, publishers []*vo.PublisherVO, studios []*vo.StudioVO, licenses []*vo.LicenseVO,
 ) <span class="cov9" title="160">{
         systems = make([]*vo.SystemVO, 0, len(systemIds))
         for _, id := range systemIds </span><span class="cov0" title="0">{
-                system, err := GetSystem(c, id)
+                if systemsMap != nil </span><span class="cov0" title="0">{
+                        if system, ok := systemsMap[id]; ok </span><span class="cov0" title="0">{
+                                systems = append(systems, system)
+                        }</span>
+                        <span class="cov0" title="0">continue</span>
+                }
+                <span class="cov0" title="0">system, err := GetSystem(c, id)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No System found from Volume for ID %s: %s", id, err.Error()))
                         continue</span>
@@ -2375,8 +2412,8 @@ func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioId
 // flattenVolume merges a meta record with its current version into the pre-versioning VolumeVO
 // shape: creation/deletion audit comes from meta, the "last updated" audit comes from the
 // version's own submission audit (its most recent live edit).
-func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO <span class="cov9" title="131">{
-        systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds)
+func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion, systemsMap map[string]*vo.SystemVO) *vo.VolumeVO <span class="cov9" title="131">{
+        systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds, systemsMap)
 
         return &amp;vo.VolumeVO{
                 ID:             meta.ID,
@@ -2406,7 +2443,7 @@ func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.V
 // volumeVersionModelToVO converts a version record on its own (no meta) into the version-history
 // API shape, resolving its relationship IDs the same way a flattened read does.
 func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *vo.VolumeVersionVO <span class="cov6" title="29">{
-        systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds)
+        systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds, nil)
 
         return &amp;vo.VolumeVersionVO{
                 ID:                   version.ID,
@@ -2483,6 +2520,15 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
                 return nil, err
         }</span>
 
+        // Resolve every volume's system reference against one shared map instead of one
+        // gamesystems-api call per volume - see GetSystemsMap. A page of volumes was measured
+        // taking 10+ seconds under the old per-volume GetSystem calls.
+        <span class="cov4" title="8">systemsMap, err := GetSystemsMap(c)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while fetching systems map for Volumes: %+v", err))
+                systemsMap = map[string]*vo.SystemVO{}
+        }</span>
+
         <span class="cov4" title="8">vos := make([]*vo.VolumeVO, 0, len(versions))
         for _, version := range versions </span><span class="cov9" title="115">{
                 meta, err := getVolumeMeta(c, version.RecordID)
@@ -2497,7 +2543,7 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
                 <span class="cov9" title="115">if meta.DeletedAt != nil </span><span class="cov1" title="1">{
                         continue</span>
                 }
-                <span class="cov9" title="114">vos = append(vos, flattenVolume(c, meta, version))</span>
+                <span class="cov9" title="114">vos = append(vos, flattenVolume(c, meta, version, systemsMap))</span>
         }
 
         <span class="cov4" title="8">logging.Logger.Debug("returning volume value objects", "vos", vos)
