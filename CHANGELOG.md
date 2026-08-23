@@ -1,4 +1,11 @@
 
+## 0.14.2 - 2026-08-23
+
+### Fixed
+- Single role per contribution
+
+
+
 ## 0.14.1 - 2026-08-21
 
 ### Fixed
