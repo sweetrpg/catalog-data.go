@@ -16,7 +16,7 @@ func (suite *VolumeDataTestSuite) TestAddContributionAndQueryByVolume() {
 	assert.NoError(suite.T(), err)
 	assert.NotEmpty(suite.T(), personID)
 
-	id, err := AddContribution(ctx, *personID, suite.seedVolumeID, []string{"Author"}, "auth0|editor")
+	id, err := AddContribution(ctx, *personID, suite.seedVolumeID, "Author", "auth0|editor")
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), id)
 	assert.NotEmpty(suite.T(), *id)
@@ -26,7 +26,7 @@ func (suite *VolumeDataTestSuite) TestAddContributionAndQueryByVolume() {
 	assert.Len(suite.T(), contributions, 1)
 	assert.NotNil(suite.T(), contributions[0].Person)
 	assert.Equal(suite.T(), *personID, contributions[0].Person.ID)
-	assert.Equal(suite.T(), []string{"Author"}, contributions[0].Roles)
+	assert.Equal(suite.T(), "Author", contributions[0].Role)
 
 	got, err := GetContribution(ctx, *id)
 	assert.NoError(suite.T(), err)
@@ -41,7 +41,7 @@ func (suite *VolumeDataTestSuite) TestDeleteContribution() {
 	assert.NoError(suite.T(), err)
 	assert.NotEmpty(suite.T(), personID)
 
-	id, err := AddContribution(ctx, *personID, suite.seedVolumeID, []string{"Editor"}, "auth0|editor")
+	id, err := AddContribution(ctx, *personID, suite.seedVolumeID, "Editor", "auth0|editor")
 	assert.NoError(suite.T(), err)
 
 	deleted, err := DeleteContribution(ctx, *id)

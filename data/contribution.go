@@ -57,7 +57,7 @@ func contributionModelToVO(c context.Context, model *models.Contribution) *vo.Co
 		ID:     model.ID,
 		Person: personVO,
 		Volume: volumeVO,
-		Roles:  model.Roles,
+		Role:   model.Role,
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: model.CreatedAt,
 			CreatedBy: model.CreatedBy,
@@ -110,10 +110,10 @@ func QueryContributionsByVolume(c context.Context, volumeID string) ([]*vo.Contr
 	return vos, nil
 }
 
-// AddContribution creates a new person-to-volume credit and returns its ID.
-func AddContribution(c context.Context, personID, volumeID string, roles []string, createdBy string) (*string, error) {
+// AddContribution creates a new person-to-volume credit with a single role and returns its ID.
+func AddContribution(c context.Context, personID, volumeID, role, createdBy string) (*string, error) {
 	_, span := otel.Tracer("contribution").Start(c, "db-add-contribution", oteltrace.WithAttributes(
-		attribute.String("personId", personID), attribute.String("volumeId", volumeID)))
+		attribute.String("personId", personID), attribute.String("volumeId", volumeID), attribute.String("role", role)))
 	defer span.End()
 
 	now := time.Now()
@@ -121,7 +121,7 @@ func AddContribution(c context.Context, personID, volumeID string, roles []strin
 		ID:       primitive.NewObjectID().Hex(),
 		PersonId: personID,
 		VolumeId: volumeID,
-		Roles:    roles,
+		Role:     role,
 		Auditable: modelcore.Auditable{
 			CreatedAt: now,
 			CreatedBy: createdBy,
