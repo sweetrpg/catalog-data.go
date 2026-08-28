@@ -1,4 +1,4 @@
-// Package gamesystems is a minimal client for gamesystems-api's read endpoints, used by the
+// Package game-systems is a minimal client for game-systems-api's read endpoints, used by the
 // data package to resolve a Volume's system references at read time instead of storing its own
 // copy of system data. See platform's game-systems-catalog spec
 // (openspec/changes/game-systems-service in sweetrpg/platform).
@@ -15,13 +15,13 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-// Client calls gamesystems-api's read endpoints.
+// Client calls game-systems-api's read endpoints.
 type Client struct {
 	baseURL string
 	http    *http.Client
 }
 
-// NewClient builds a Client against gamesystems-api's base URL. An empty baseURL is accepted so
+// NewClient builds a Client against game-systems-api's base URL. An empty baseURL is accepted so
 // the service can still start when GAMESYSTEMS_API_URL isn't configured; every call will then
 // fail with a transport error, which callers already skip-and-log.
 func NewClient(baseURL string) *Client {
@@ -34,12 +34,12 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// NotFoundError means gamesystems-api has no game system at the given id.
+// NotFoundError means game-systems-api has no game system at the given id.
 type NotFoundError struct{ ID string }
 
 func (e NotFoundError) Error() string { return fmt.Sprintf("gamesystems: %s not found", e.ID) }
 
-// gameSystemResponse is gamesystems-api's flattened GET /systems(/:id) response shape (its
+// gameSystemResponse is game-systems-api's flattened GET /systems(/:id) response shape (its
 // models.GameSystemVersion, JSON-tagged) - only the fields this client needs are declared here.
 type gameSystemResponse struct {
 	RecordID string `json:"record_id"`
@@ -74,7 +74,7 @@ func (c *Client) Get(ctx context.Context, id string) (*System, error) {
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("gamesystems: get request failed: %w", err)
+		return nil, fmt.Errorf("game-systems: get request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -82,12 +82,12 @@ func (c *Client) Get(ctx context.Context, id string) (*System, error) {
 		return nil, NotFoundError{ID: id}
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("gamesystems: unexpected status %d from get %s", resp.StatusCode, id)
+		return nil, fmt.Errorf("game-systems: unexpected status %d from get %s", resp.StatusCode, id)
 	}
 
 	var body gameSystemResponse
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, fmt.Errorf("gamesystems: decode get response: %w", err)
+		return nil, fmt.Errorf("game-systems: decode get response: %w", err)
 	}
 
 	return &System{
@@ -96,28 +96,28 @@ func (c *Client) Get(ctx context.Context, id string) (*System, error) {
 	}, nil
 }
 
-// List resolves every live game system against gamesystems-api's current versions - backs
+// List resolves every live game system against game-systems-api's current versions - backs
 // catalog-api's /systems list route (the autocomplete/picker source for a volume's system
 // associations) as well as GetStats below.
 func (c *Client) List(ctx context.Context) ([]*System, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/systems", nil)
 	if err != nil {
-		return nil, fmt.Errorf("gamesystems: build list request: %w", err)
+		return nil, fmt.Errorf("game-systems: build list request: %w", err)
 	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("gamesystems: list request failed: %w", err)
+		return nil, fmt.Errorf("game-systems: list request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("gamesystems: unexpected status %d from list", resp.StatusCode)
+		return nil, fmt.Errorf("game-systems: unexpected status %d from list", resp.StatusCode)
 	}
 
 	var all []gameSystemResponse
 	if err := json.NewDecoder(resp.Body).Decode(&all); err != nil {
-		return nil, fmt.Errorf("gamesystems: decode list response: %w", err)
+		return nil, fmt.Errorf("game-systems: decode list response: %w", err)
 	}
 
 	systems := make([]*System, len(all))
@@ -130,7 +130,7 @@ func (c *Client) List(ctx context.Context) ([]*System, error) {
 	return systems, nil
 }
 
-// Stats is the catalog-landing-page-summary card gamesystems-api backs: a live-record count
+// Stats is the catalog-landing-page-summary card game-systems-api backs: a live-record count
 // plus the single most recently submitted live record.
 type Stats struct {
 	Count          int
@@ -139,7 +139,7 @@ type Stats struct {
 	MostRecentName string
 }
 
-// GetStats computes Stats from List - no dedicated stats endpoint on gamesystems-api yet, and
+// GetStats computes Stats from List - no dedicated stats endpoint on game-systems-api yet, and
 // system counts are small enough that computing this client-side is simpler than adding one.
 // Revisit if that stops being true.
 func (c *Client) GetStats(ctx context.Context) (*Stats, error) {

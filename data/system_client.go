@@ -9,14 +9,14 @@ import (
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 )
 
-// GameSystemsClient resolves system references against gamesystems-api, the system of record
+// GameSystemsClient resolves system references against game-systems-api, the system of record
 // for game systems (see platform's game-systems-catalog spec), instead of catalog-api storing
 // its own copy. Set once at startup (see catalog-api's cmd/catalog-api/main.go); nil until then,
 // in which case GetSystem/GetSystemStats degrade to "no data" rather than panicking - matching
 // how resolveVolumeRelations already treats a missing/erroring relation as skip-and-log.
 var GameSystemsClient *gamesystems.Client
 
-// GetSystem resolves a game system by id against gamesystems-api's current (live) version.
+// GetSystem resolves a game system by id against game-systems-api's current (live) version.
 func GetSystem(c context.Context, id string) (*vo.SystemVO, error) {
 	if GameSystemsClient == nil {
 		return nil, nil
@@ -38,7 +38,7 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) {
 	}, nil
 }
 
-// QuerySystems lists every live game system against gamesystems-api's current versions. Backs
+// QuerySystems lists every live game system against game-systems-api's current versions. Backs
 // catalog-api's /systems list route - a nil GameSystemsClient (unconfigured GAMESYSTEMS_API_URL)
 // degrades to an empty list rather than an error, matching GetSystem's fail-open convention.
 func QuerySystems(c context.Context) ([]*vo.SystemVO, error) {
@@ -64,7 +64,7 @@ func QuerySystems(c context.Context) ([]*vo.SystemVO, error) {
 }
 
 // SearchSystems finds live game systems whose name contains query (case-insensitive) - same
-// scan-in-memory approach as data.SearchPersons, over gamesystems-api's full live list rather
+// scan-in-memory approach as data.SearchPersons, over game-systems-api's full live list rather
 // than a Mongo collection (there is no local collection for Systems to query).
 func SearchSystems(c context.Context, query string) ([]*vo.SystemVO, error) {
 	all, err := QuerySystems(c)
@@ -83,7 +83,7 @@ func SearchSystems(c context.Context, query string) ([]*vo.SystemVO, error) {
 
 // GetSystemsMap resolves every live game system in one call, keyed by ID - lets a caller
 // resolving many volumes' system references (e.g. QueryVolumes) do it with a single
-// gamesystems-api round trip instead of one per volume. Returns an empty (non-nil) map, not an
+// game-systems-api round trip instead of one per volume. Returns an empty (non-nil) map, not an
 // error, when the client isn't configured, matching GetSystem's fail-open behavior.
 func GetSystemsMap(c context.Context) (map[string]*vo.SystemVO, error) {
 	if GameSystemsClient == nil {
@@ -107,7 +107,7 @@ func GetSystemsMap(c context.Context) (map[string]*vo.SystemVO, error) {
 	return m, nil
 }
 
-// GetSystemStats returns the systems landing-page-summary card, computed by gamesystems-api.
+// GetSystemStats returns the systems landing-page-summary card, computed by game-systems-api.
 func GetSystemStats(c context.Context) (*TypeStats, error) {
 	if GameSystemsClient == nil {
 		return &TypeStats{}, nil
