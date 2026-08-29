@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sweetrpg/api-core.go/tracing"
@@ -209,7 +210,7 @@ func relationIDs[T any](relations []*T, id func(*T) string) []string {
 }
 
 // resolveVolumeRelations resolves a volume's relationship IDs into their VOs. systemsMap, when
-// non-nil, is used as a pre-fetched id->system lookup instead of one gamesystems-api call per
+// non-nil, is used as a pre-fetched id->system lookup instead of one game-systems-api call per
 // id - callers resolving many volumes at once (QueryVolumes) build it once via GetSystemsMap and
 // share it across every volume; callers resolving a single volume pass nil and fall back to
 // GetSystem's per-id call, which is cheap enough at that scale.
@@ -381,7 +382,7 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 	}
 
 	// Resolve every volume's system reference against one shared map instead of one
-	// gamesystems-api call per volume - see GetSystemsMap. A page of volumes was measured
+	// game-systems-api call per volume - see GetSystemsMap. A page of volumes was measured
 	// taking 10+ seconds under the old per-volume GetSystem calls.
 	systemsMap, err := GetSystemsMap(c)
 	if err != nil {
@@ -408,6 +409,24 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 
 	logging.Logger.Debug("returning volume value objects", "vos", vos)
 	return vos, nil
+}
+
+// SearchVolumes finds live volumes whose title contains query (case-insensitive), scanning the
+// full collection - see data.SearchPersons for why this scans in memory rather than pushing the
+// match down to Mongo.
+func SearchVolumes(c context.Context, query string) ([]*vo.VolumeVO, error) {
+	all, err := QueryVolumes(c, apiutil.QueryParams{Limit: searchScanLimit})
+	if err != nil {
+		return nil, err
+	}
+	needle := strings.ToLower(query)
+	matches := make([]*vo.VolumeVO, 0, len(all))
+	for _, v := range all {
+		if strings.Contains(strings.ToLower(v.Title), needle) {
+			matches = append(matches, v)
+		}
+	}
+	return matches, nil
 }
 
 // CatalogStats is a small aggregate over the live volume set - the total count and the most
