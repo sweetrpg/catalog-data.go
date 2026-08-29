@@ -27,8 +27,8 @@ github.com/montanaflynn/stats v0.7.1 h1:etflOAAHORrCC44V+aR6Ftzort912ZU+YLiSTuV8
 github.com/montanaflynn/stats v0.7.1/go.mod h1:etXPPgVO6n31NxCd9KQUMvCM+ve0ruNzt6R8Bnaayow=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
-github.com/sweetrpg/api-core.go v0.1.0 h1:mlRoCVmS/QCO11LU8Fnl82xYJhTvI4IXFMgoH34IiA0=
-github.com/sweetrpg/api-core.go v0.1.0/go.mod h1:ka2gLYUlukRaBXiaaohfRSHoNH77oSrTkkik07Z+lj0=
+github.com/sweetrpg/api-core.go v0.1.1 h1:qqr5Rgiaw7n2RtDZ7fdoy5vw8RT3L42orhJ/x+EYX9w=
+github.com/sweetrpg/api-core.go v0.1.1/go.mod h1:ka2gLYUlukRaBXiaaohfRSHoNH77oSrTkkik07Z+lj0=
 github.com/sweetrpg/catalog-objects.go v0.4.3 h1:WukLXUnpMCXyuthx8PVPu3FvqtTCJvjorA5Dwt3vMvw=
 github.com/sweetrpg/catalog-objects.go v0.4.3/go.mod h1:94LMLsDebNMb629Nv+FHkKq+FI6H8CeCbeDl9RWs2O0=
 github.com/sweetrpg/common.go v0.0.16 h1:XT8PwUXz0BOMIITXLjw3G6rEjjRUEs0Xs4+R9o2fVBk=
