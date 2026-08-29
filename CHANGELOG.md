@@ -1,4 +1,15 @@
 
+## 0.15.0 - 2026-08-29
+
+### Added
+- Add SearchVolumes for title substring search
+
+
+### Changed
+- Update gamesystems references to game-systems
+
+
+
 ## 0.14.2 - 2026-08-23
 
 ### Fixed
