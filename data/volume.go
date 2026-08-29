@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sweetrpg/api-core.go/tracing"
@@ -408,6 +409,24 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 
 	logging.Logger.Debug("returning volume value objects", "vos", vos)
 	return vos, nil
+}
+
+// SearchVolumes finds live volumes whose title contains query (case-insensitive), scanning the
+// full collection - see data.SearchPersons for why this scans in memory rather than pushing the
+// match down to Mongo.
+func SearchVolumes(c context.Context, query string) ([]*vo.VolumeVO, error) {
+	all, err := QueryVolumes(c, apiutil.QueryParams{Limit: searchScanLimit})
+	if err != nil {
+		return nil, err
+	}
+	needle := strings.ToLower(query)
+	matches := make([]*vo.VolumeVO, 0, len(all))
+	for _, v := range all {
+		if strings.Contains(strings.ToLower(v.Title), needle) {
+			matches = append(matches, v)
+		}
+	}
+	return matches, nil
 }
 
 // CatalogStats is a small aggregate over the live volume set - the total count and the most
