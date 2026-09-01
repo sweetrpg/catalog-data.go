@@ -2551,11 +2551,19 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
         return vos, nil</span>
 }
 
-// SearchVolumes finds live volumes whose title contains query (case-insensitive), scanning the
-// full collection - see data.SearchPersons for why this scans in memory rather than pushing the
-// match down to Mongo.
+// volumeSearchScanLimit is far smaller than the shared searchScanLimit (5000, used by
+// SearchPublishers/SearchPersons/etc.) - QueryVolumes resolves each volume's full relation set
+// (systems, publishers, studios, licenses), so scanning 5000 volumes measured at 6-7s against a
+// warm dev catalog, blowing past game-room-web's 5s request timeout. 500 keeps this well under
+// that budget; raise only alongside a real fix (pushing the title match down to a Mongo query
+// instead of an in-memory scan over fully-hydrated volumes).
+const volumeSearchScanLimit = 500
+
+// SearchVolumes finds live volumes whose title contains query (case-insensitive), scanning up to
+// volumeSearchScanLimit volumes - see the comment there for why this doesn't use the shared
+// searchScanLimit other entities' Search* functions use.
 func SearchVolumes(c context.Context, query string) ([]*vo.VolumeVO, error) <span class="cov0" title="0">{
-        all, err := QueryVolumes(c, apiutil.QueryParams{Limit: searchScanLimit})
+        all, err := QueryVolumes(c, apiutil.QueryParams{Limit: volumeSearchScanLimit})
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
