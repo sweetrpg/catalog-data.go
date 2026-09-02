@@ -1,4 +1,15 @@
 
+## 0.16.0 - 2026-09-02
+
+### Added
+- Store and sync denormalized system titles
+
+
+### Fixed
+- Cap SearchVolumes scan at 500, not 5000
+
+
+
 ## 0.15.0 - 2026-08-29
 
 ### Added
