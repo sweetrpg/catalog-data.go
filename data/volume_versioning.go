@@ -134,7 +134,7 @@ func GetVolumeVersion(c context.Context, id string, version int) (*vo.VolumeVers
 // selectively accept - everything on VolumeVersion except its version-lifecycle bookkeeping.
 var volumeVersionSubstantiveFields = []string{
 	"title", "description", "notes", "format", "cover_asset_id", "sample_asset_ids",
-	"system_ids", "publisher_ids", "studio_ids", "license_ids", "properties", "tags",
+	"system_ids", "system_titles", "publisher_ids", "studio_ids", "license_ids", "properties", "tags",
 }
 
 func volumeVersionFieldValue(v *models.VolumeVersion, field string) any {
@@ -153,6 +153,8 @@ func volumeVersionFieldValue(v *models.VolumeVersion, field string) any {
 		return v.SampleAssetIds
 	case "system_ids":
 		return v.SystemIds
+	case "system_titles":
+		return v.SystemTitles
 	case "publisher_ids":
 		return v.PublisherIds
 	case "studio_ids":
@@ -184,6 +186,8 @@ func setVolumeVersionFieldValue(v *models.VolumeVersion, field string, value any
 		v.SampleAssetIds = value.([]string)
 	case "system_ids":
 		v.SystemIds = value.([]string)
+	case "system_titles":
+		v.SystemTitles, _ = value.(map[string]string)
 	case "publisher_ids":
 		v.PublisherIds = value.([]string)
 	case "studio_ids":

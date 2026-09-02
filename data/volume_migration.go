@@ -55,6 +55,7 @@ func MigrateVolumes(c context.Context) (int, error) {
 			CoverAssetId:   v.CoverAssetId,
 			SampleAssetIds: v.SampleAssetIds,
 			SystemIds:      v.SystemIds,
+			SystemTitles:   v.SystemTitles,
 			PublisherIds:   v.PublisherIds,
 			StudioIds:      v.StudioIds,
 			LicenseIds:     v.LicenseIds,
