@@ -192,7 +192,7 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) {
 		return nil, err
 	}
 
-	return flattenVolume(c, meta, version, nil), nil
+	return flattenVolume(c, meta, version), nil
 }
 
 // relationIDs extracts each element's ID from a pointer-slice relationship field - the
@@ -209,31 +209,45 @@ func relationIDs[T any](relations []*T, id func(*T) string) []string {
 	return ids
 }
 
-// resolveVolumeRelations resolves a volume's relationship IDs into their VOs. systemsMap, when
-// non-nil, is used as a pre-fetched id->system lookup instead of one game-systems-api call per
-// id - callers resolving many volumes at once (QueryVolumes) build it once via GetSystemsMap and
-// share it across every volume; callers resolving a single volume pass nil and fall back to
-// GetSystem's per-id call, which is cheap enough at that scale.
-func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioIds, licenseIds []string, systemsMap map[string]*vo.SystemVO) (
-	systems []*vo.SystemVO, publishers []*vo.PublisherVO, studios []*vo.StudioVO, licenses []*vo.LicenseVO,
-) {
-	systems = make([]*vo.SystemVO, 0, len(systemIds))
+// systemsFromTitles builds a volume's system relationship VOs from its denormalized
+// SystemTitles snapshot - no game-systems-api call. A system whose stored title is absent or
+// empty renders its ID as the name (see catalog-volume-detail spec's ID-fallback requirement).
+func systemsFromTitles(systemIds []string, titles map[string]string) []*vo.SystemVO {
+	systems := make([]*vo.SystemVO, 0, len(systemIds))
 	for _, id := range systemIds {
-		if systemsMap != nil {
-			if system, ok := systemsMap[id]; ok {
-				systems = append(systems, system)
-			}
-			continue
+		name := id
+		if t, ok := titles[id]; ok && t != "" {
+			name = t
 		}
-		system, err := GetSystem(c, id)
-		if err != nil {
-			logging.Logger.Error(fmt.Sprintf("No System found from Volume for ID %s: %s", id, err.Error()))
-			continue
-		}
-		if system != nil {
-			systems = append(systems, system)
+		systems = append(systems, &vo.SystemVO{ID: id, GameSystem: name})
+	}
+	return systems
+}
+
+// pruneSystemTitles drops any stored title whose system is no longer referenced, keeping the
+// map parallel to systemIds when a reference is removed on edit.
+func pruneSystemTitles(titles map[string]string, systemIds []string) map[string]string {
+	if len(titles) == 0 {
+		return nil
+	}
+	kept := make(map[string]string, len(systemIds))
+	for _, id := range systemIds {
+		if t, ok := titles[id]; ok && t != "" {
+			kept[id] = t
 		}
 	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
+}
+
+// resolveVolumeRelations resolves a volume's non-system relationship IDs into their VOs. System
+// references are resolved separately from the volume's stored SystemTitles (systemsFromTitles),
+// so this makes no game-systems-api call.
+func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseIds []string) (
+	publishers []*vo.PublisherVO, studios []*vo.StudioVO, licenses []*vo.LicenseVO,
+) {
 	publishers = make([]*vo.PublisherVO, 0, len(publisherIds))
 	for _, id := range publisherIds {
 		publisher, err := GetPublisher(c, id)
@@ -273,8 +287,8 @@ func resolveVolumeRelations(c context.Context, systemIds, publisherIds, studioId
 // flattenVolume merges a meta record with its current version into the pre-versioning VolumeVO
 // shape: creation/deletion audit comes from meta, the "last updated" audit comes from the
 // version's own submission audit (its most recent live edit).
-func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion, systemsMap map[string]*vo.SystemVO) *vo.VolumeVO {
-	systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds, systemsMap)
+func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO {
+	publishers, studios, licenses := resolveVolumeRelations(c, version.PublisherIds, version.StudioIds, version.LicenseIds)
 
 	return &vo.VolumeVO{
 		ID:             meta.ID,
@@ -284,7 +298,8 @@ func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.V
 		Format:         version.Format,
 		CoverAssetId:   version.CoverAssetId,
 		SampleAssetIds: version.SampleAssetIds,
-		Systems:        systems,
+		Systems:        systemsFromTitles(version.SystemIds, version.SystemTitles),
+		SystemTitles:   version.SystemTitles,
 		Publishers:     publishers,
 		Studios:        studios,
 		Licenses:       licenses,
@@ -304,7 +319,7 @@ func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.V
 // volumeVersionModelToVO converts a version record on its own (no meta) into the version-history
 // API shape, resolving its relationship IDs the same way a flattened read does.
 func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *vo.VolumeVersionVO {
-	systems, publishers, studios, licenses := resolveVolumeRelations(c, version.SystemIds, version.PublisherIds, version.StudioIds, version.LicenseIds, nil)
+	publishers, studios, licenses := resolveVolumeRelations(c, version.PublisherIds, version.StudioIds, version.LicenseIds)
 
 	return &vo.VolumeVersionVO{
 		ID:                   version.ID,
@@ -318,7 +333,8 @@ func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *v
 		SampleAssetIds:       version.SampleAssetIds,
 		StagedCoverAssetId:   version.StagedCoverAssetId,
 		StagedSampleAssetIds: version.StagedSampleAssetIds,
-		Systems:              systems,
+		Systems:              systemsFromTitles(version.SystemIds, version.SystemTitles),
+		SystemTitles:         version.SystemTitles,
 		Publishers:           publishers,
 		Studios:              studios,
 		Licenses:             licenses,
@@ -349,6 +365,7 @@ func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion {
 		Properties:     modelcoreutil.ToPropertyModels(volume.Properties),
 		Tags:           modelcoreutil.ToTagModels(volume.Tags),
 		SystemIds:      relationIDs(volume.Systems, func(s *vo.SystemVO) string { return s.ID }),
+		SystemTitles:   pruneSystemTitles(volume.SystemTitles, relationIDs(volume.Systems, func(s *vo.SystemVO) string { return s.ID })),
 		PublisherIds:   relationIDs(volume.Publishers, func(p *vo.PublisherVO) string { return p.ID }),
 		StudioIds:      relationIDs(volume.Studios, func(s *vo.StudioVO) string { return s.ID }),
 		LicenseIds:     relationIDs(volume.Licenses, func(l *vo.LicenseVO) string { return l.ID }),
@@ -381,15 +398,10 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 		return nil, err
 	}
 
-	// Resolve every volume's system reference against one shared map instead of one
-	// game-systems-api call per volume - see GetSystemsMap. A page of volumes was measured
-	// taking 10+ seconds under the old per-volume GetSystem calls.
-	systemsMap, err := GetSystemsMap(c)
-	if err != nil {
-		logging.Logger.Error(fmt.Sprintf("Error while fetching systems map for Volumes: %+v", err))
-		systemsMap = map[string]*vo.SystemVO{}
-	}
-
+	// System names come from each volume's denormalized SystemTitles snapshot (see
+	// flattenVolume -> systemsFromTitles), so serving a page of volumes makes no
+	// game-systems-api call. This replaced a per-volume GetSystem fan-out that was measured
+	// taking 10+ seconds for one page.
 	vos := make([]*vo.VolumeVO, 0, len(versions))
 	for _, version := range versions {
 		meta, err := getVolumeMeta(c, version.RecordID)
@@ -404,7 +416,7 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 		if meta.DeletedAt != nil {
 			continue
 		}
-		vos = append(vos, flattenVolume(c, meta, version, systemsMap))
+		vos = append(vos, flattenVolume(c, meta, version))
 	}
 
 	logging.Logger.Debug("returning volume value objects", "vos", vos)
