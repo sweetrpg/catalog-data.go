@@ -57,7 +57,7 @@
 				
 				<option value="file0">github.com/sweetrpg/catalog-data.go/data/contribution.go (60.4%)</option>
 				
-				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (58.9%)</option>
+				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (59.1%)</option>
 				
 				<option value="file2">github.com/sweetrpg/catalog-data.go/data/license_versioning.go (22.7%)</option>
 				
@@ -71,7 +71,7 @@
 				
 				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_client.go (0.0%)</option>
 				
-				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (64.0%)</option>
+				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (64.2%)</option>
 				
 				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
 				
@@ -79,7 +79,7 @@
 				
 				<option value="file11">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (64.4%)</option>
 				
-				<option value="file12">github.com/sweetrpg/catalog-data.go/gamesystems/client.go (70.0%)</option>
+				<option value="file12">github.com/sweetrpg/catalog-data.go/gamesystems/client.go (72.9%)</option>
 				
 				</select>
 			</div>
@@ -414,11 +414,15 @@ func (cfg entityVersioningConfig[T]) archiveVersion(c context.Context, recordID 
         return cfg.setVersionState(c, recordID, version, bson.D{{Key: "state", Value: string(models.VersionStateArchived)}})
 }</span>
 
-func (cfg entityVersioningConfig[T]) setMetaCurrentVersion(c context.Context, recordID string, version int) error <span class="cov6" title="11">{
+func (cfg entityVersioningConfig[T]) setMetaCurrentVersion(c context.Context, recordID string, version int, actingUserID string) error <span class="cov6" title="11">{
         _, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: recordID}},
-                bson.D{{Key: "$set", Value: bson.D{{Key: "current_version", Value: version}}}},
+                bson.D{{Key: "$set", Value: bson.D{
+                        {Key: "current_version", Value: version},
+                        {Key: "updated_at", Value: time.Now()},
+                        {Key: "updated_by", Value: actingUserID},
+                }}},
         )
         return err
 }</span>
@@ -460,7 +464,10 @@ func (cfg entityVersioningConfig[T]) changedFields(submitted, base *T) []string 
 func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, createdBy string) (*string, error) <span class="cov8" title="24">{
         now := time.Now()
         metaID := primitive.NewObjectID().Hex()
-        meta := models.EntityMeta{ID: metaID, CurrentVersion: 1, CreatedAt: now, CreatedBy: createdBy}
+        meta := models.EntityMeta{
+                ID: metaID, CurrentVersion: 1,
+                CreatedAt: now, CreatedBy: createdBy, UpdatedAt: now, UpdatedBy: createdBy,
+        }
         if _, err := database.Insert[models.EntityMeta](cfg.metaCollection, meta); err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
@@ -522,7 +529,7 @@ func (cfg entityVersioningConfig[T]) createVersionWithSubmission(c context.Conte
                 if err := cfg.archiveVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
-                <span class="cov5" title="6">if err := cfg.setMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
+                <span class="cov5" title="6">if err := cfg.setMetaCurrentVersion(c, id, nextVersion, submittedBy); err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
         }
@@ -605,7 +612,7 @@ func (cfg entityVersioningConfig[T]) acceptVersion(c context.Context, id string,
                 }); err != nil </span><span class="cov0" title="0">{
                         return nil, nil, err
                 }</span>
-                <span class="cov4" title="4">if err := cfg.setMetaCurrentVersion(c, id, version); err != nil </span><span class="cov0" title="0">{
+                <span class="cov4" title="4">if err := cfg.setMetaCurrentVersion(c, id, version, reviewedBy); err != nil </span><span class="cov0" title="0">{
                         return nil, nil, err
                 }</span>
                 <span class="cov4" title="4">return submitted, nil, nil</span>
@@ -670,7 +677,7 @@ func (cfg entityVersioningConfig[T]) acceptVersion(c context.Context, id string,
         <span class="cov0" title="0">if err := cfg.archiveVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
                 return nil, nil, err
         }</span>
-        <span class="cov0" title="0">if err := cfg.setMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if err := cfg.setMetaCurrentVersion(c, id, nextVersion, reviewedBy); err != nil </span><span class="cov0" title="0">{
                 return nil, nil, err
         }</span>
         <span class="cov0" title="0">if err := cfg.setVersionState(c, id, version, bson.D{
@@ -732,7 +739,7 @@ func (cfg entityVersioningConfig[T]) retractVersion(c context.Context, id string
 }
 
 // setCurrentVersion rolls a record back (or forward) to an arbitrary existing version.
-func (cfg entityVersioningConfig[T]) setCurrentVersion(c context.Context, id string, version int) (*T, error) <span class="cov1" title="1">{
+func (cfg entityVersioningConfig[T]) setCurrentVersion(c context.Context, id string, version int, actingUserID string) (*T, error) <span class="cov1" title="1">{
         meta, err := cfg.getMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
@@ -756,7 +763,7 @@ func (cfg entityVersioningConfig[T]) setCurrentVersion(c context.Context, id str
         <span class="cov1" title="1">if err := cfg.setVersionState(c, id, version, bson.D{{Key: "state", Value: string(models.VersionStateLive)}}); err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov1" title="1">if err := cfg.setMetaCurrentVersion(c, id, version); err != nil </span><span class="cov0" title="0">{
+        <span class="cov1" title="1">if err := cfg.setMetaCurrentVersion(c, id, version, actingUserID); err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
         <span class="cov1" title="1">cfg.lifecycle(target).State = models.VersionStateLive
@@ -771,17 +778,24 @@ func (cfg entityVersioningConfig[T]) softDelete(c context.Context, id string, de
         _, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: id}},
-                bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: now}, {Key: "deleted_by", Value: deletedBy}}}},
+                bson.D{{Key: "$set", Value: bson.D{
+                        {Key: "deleted_at", Value: now}, {Key: "deleted_by", Value: deletedBy},
+                        {Key: "updated_at", Value: now}, {Key: "updated_by", Value: deletedBy},
+                }}},
         )
         return err
 }</span>
 
 // restore clears the meta record's deleted_at/deleted_by, returning it to every normal read path.
-func (cfg entityVersioningConfig[T]) restore(c context.Context, id string) error <span class="cov1" title="1">{
+func (cfg entityVersioningConfig[T]) restore(c context.Context, id string, restoredBy string) error <span class="cov1" title="1">{
+        now := time.Now()
         _, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: id}},
-                bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: nil}, {Key: "deleted_by", Value: nil}}}},
+                bson.D{{Key: "$set", Value: bson.D{
+                        {Key: "deleted_at", Value: nil}, {Key: "deleted_by", Value: nil},
+                        {Key: "updated_at", Value: now}, {Key: "updated_by", Value: restoredBy},
+                }}},
         )
         return err
 }</span>
@@ -829,7 +843,9 @@ func migrateEntity[Old any, New any](c context.Context, cfg migrationConfig[Old,
 
                 <span class="cov2" title="2">aud := cfg.auditable(old)
                 meta := models.EntityMeta{
-                        ID: id, CurrentVersion: 1, CreatedAt: aud.CreatedAt, CreatedBy: aud.CreatedBy,
+                        ID: id, CurrentVersion: 1,
+                        CreatedAt: aud.CreatedAt, CreatedBy: aud.CreatedBy,
+                        UpdatedAt: aud.UpdatedAt, UpdatedBy: aud.UpdatedBy,
                         DeletedAt: aud.DeletedAt, DeletedBy: aud.DeletedBy,
                 }
                 if _, err := database.Insert[models.EntityMeta](cfg.versioning.metaCollection, meta); err != nil </span><span class="cov0" title="0">{
@@ -917,8 +933,8 @@ func SoftDeleteLicense(c context.Context, id string, deletedBy string) error <sp
 }</span>
 
 // RestoreLicense clears a soft-deleted license's deletion, returning it to every normal read path.
-func RestoreLicense(c context.Context, id string) error <span class="cov0" title="0">{
-        return licenseVersioning.restore(c, id)
+func RestoreLicense(c context.Context, id string, restoredBy string) error <span class="cov0" title="0">{
+        return licenseVersioning.restore(c, id, restoredBy)
 }</span>
 
 func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO <span class="cov6" title="3">{
@@ -957,7 +973,7 @@ func flattenLicense(meta *models.EntityMeta, version *models.LicenseVersion) *vo
                 Tags:       modelcoreutil.FromTagModels(version.Tags),
                 AuditableVO: modelcorevo.AuditableVO{
                         CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
-                        UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+                        UpdatedAt: meta.UpdatedAt, UpdatedBy: meta.UpdatedBy,
                         DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
                 },
         }
@@ -1044,8 +1060,8 @@ func RetractLicenseVersion(c context.Context, id string, version int, submitterI
 }
 
 // SetCurrentLicenseVersion rolls a license back (or forward) to an arbitrary existing version.
-func SetCurrentLicenseVersion(c context.Context, id string, version int) (*vo.LicenseVersionVO, error) <span class="cov0" title="0">{
-        result, err := licenseVersioning.setCurrentVersion(c, id, version)
+func SetCurrentLicenseVersion(c context.Context, id string, version int, actingUserID string) (*vo.LicenseVersionVO, error) <span class="cov0" title="0">{
+        result, err := licenseVersioning.setCurrentVersion(c, id, version, actingUserID)
         if err != nil || result == nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
@@ -1186,8 +1202,8 @@ func SoftDeletePerson(c context.Context, id string, deletedBy string) error <spa
 }</span>
 
 // RestorePerson clears a soft-deleted person's deletion, returning it to every normal read path.
-func RestorePerson(c context.Context, id string) error <span class="cov0" title="0">{
-        return personVersioning.restore(c, id)
+func RestorePerson(c context.Context, id string, restoredBy string) error <span class="cov0" title="0">{
+        return personVersioning.restore(c, id, restoredBy)
 }</span>
 
 func personVersionToVO(version *models.PersonVersion) *vo.PersonVersionVO <span class="cov5" title="3">{
@@ -1220,7 +1236,7 @@ func flattenPerson(meta *models.EntityMeta, version *models.PersonVersion) *vo.P
                 Tags:       modelcoreutil.FromTagModels(version.Tags),
                 AuditableVO: modelcorevo.AuditableVO{
                         CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
-                        UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+                        UpdatedAt: meta.UpdatedAt, UpdatedBy: meta.UpdatedBy,
                         DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
                 },
         }
@@ -1307,8 +1323,8 @@ func RetractPersonVersion(c context.Context, id string, version int, submitterID
 }
 
 // SetCurrentPersonVersion rolls a person back (or forward) to an arbitrary existing version.
-func SetCurrentPersonVersion(c context.Context, id string, version int) (*vo.PersonVersionVO, error) <span class="cov0" title="0">{
-        result, err := personVersioning.setCurrentVersion(c, id, version)
+func SetCurrentPersonVersion(c context.Context, id string, version int, actingUserID string) (*vo.PersonVersionVO, error) <span class="cov0" title="0">{
+        result, err := personVersioning.setCurrentVersion(c, id, version, actingUserID)
         if err != nil || result == nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
@@ -1458,8 +1474,8 @@ func SoftDeletePublisher(c context.Context, id string, deletedBy string) error <
 
 // RestorePublisher clears a soft-deleted publisher's deletion, returning it to every normal read
 // path.
-func RestorePublisher(c context.Context, id string) error <span class="cov1" title="1">{
-        return publisherVersioning.restore(c, id)
+func RestorePublisher(c context.Context, id string, restoredBy string) error <span class="cov1" title="1">{
+        return publisherVersioning.restore(c, id, restoredBy)
 }</span>
 
 func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersionVO <span class="cov8" title="17">{
@@ -1492,7 +1508,7 @@ func flattenPublisher(meta *models.EntityMeta, version *models.PublisherVersion)
                 Tags:       modelcoreutil.FromTagModels(version.Tags),
                 AuditableVO: modelcorevo.AuditableVO{
                         CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
-                        UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+                        UpdatedAt: meta.UpdatedAt, UpdatedBy: meta.UpdatedBy,
                         DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
                 },
         }
@@ -1582,8 +1598,8 @@ func RetractPublisherVersion(c context.Context, id string, version int, submitte
 }
 
 // SetCurrentPublisherVersion rolls a publisher back (or forward) to an arbitrary existing version.
-func SetCurrentPublisherVersion(c context.Context, id string, version int) (*vo.PublisherVersionVO, error) <span class="cov1" title="1">{
-        result, err := publisherVersioning.setCurrentVersion(c, id, version)
+func SetCurrentPublisherVersion(c context.Context, id string, version int, actingUserID string) (*vo.PublisherVersionVO, error) <span class="cov1" title="1">{
+        result, err := publisherVersioning.setCurrentVersion(c, id, version, actingUserID)
         if err != nil || result == nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
@@ -1807,8 +1823,8 @@ func SoftDeleteStudio(c context.Context, id string, deletedBy string) error <spa
 }</span>
 
 // RestoreStudio clears a soft-deleted studio's deletion, returning it to every normal read path.
-func RestoreStudio(c context.Context, id string) error <span class="cov0" title="0">{
-        return studioVersioning.restore(c, id)
+func RestoreStudio(c context.Context, id string, restoredBy string) error <span class="cov0" title="0">{
+        return studioVersioning.restore(c, id, restoredBy)
 }</span>
 
 func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO <span class="cov5" title="3">{
@@ -1841,7 +1857,7 @@ func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.S
                 Tags:       modelcoreutil.FromTagModels(version.Tags),
                 AuditableVO: modelcorevo.AuditableVO{
                         CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
-                        UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+                        UpdatedAt: meta.UpdatedAt, UpdatedBy: meta.UpdatedBy,
                         DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
                 },
         }
@@ -1928,8 +1944,8 @@ func RetractStudioVersion(c context.Context, id string, version int, submitterID
 }
 
 // SetCurrentStudioVersion rolls a studio back (or forward) to an arbitrary existing version.
-func SetCurrentStudioVersion(c context.Context, id string, version int) (*vo.StudioVersionVO, error) <span class="cov0" title="0">{
-        result, err := studioVersioning.setCurrentVersion(c, id, version)
+func SetCurrentStudioVersion(c context.Context, id string, version int, actingUserID string) (*vo.StudioVersionVO, error) <span class="cov0" title="0">{
+        result, err := studioVersioning.setCurrentVersion(c, id, version, actingUserID)
         if err != nil || result == nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
@@ -2050,7 +2066,7 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) <span class="
                 Tags: system.Tags,
                 AuditableVO: modelcorevo.AuditableVO{
                         CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
-                        UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+                        UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
                 },
         }, nil</span>
 }
@@ -2073,7 +2089,7 @@ func QuerySystems(c context.Context) ([]*vo.SystemVO, error) <span class="cov0" 
                         Tags: system.Tags,
                         AuditableVO: modelcorevo.AuditableVO{
                                 CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
-                                UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+                                UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
                         },
                 }
         }</span>
@@ -2117,7 +2133,7 @@ func GetSystemsMap(c context.Context) (map[string]*vo.SystemVO, error) <span cla
                         Tags: system.Tags,
                         AuditableVO: modelcorevo.AuditableVO{
                                 CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
-                                UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+                                UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
                         },
                 }
         }</span>
@@ -2177,6 +2193,8 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
                 CurrentVersion: 1,
                 CreatedAt:      now,
                 CreatedBy:      volume.CreatedBy,
+                UpdatedAt:      now,
+                UpdatedBy:      volume.CreatedBy,
         }
         if _, err := database.Insert[models.VolumeMeta](volumeMetaCollection, meta); err != nil </span><span class="cov0" title="0">{
                 logging.Logger.Error("Error while inserting VolumeMeta object", "error", err)
@@ -2266,7 +2284,7 @@ func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, stat
                 if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
-                <span class="cov4" title="10">if err := setVolumeMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
+                <span class="cov4" title="10">if err := setVolumeMetaCurrentVersion(c, id, nextVersion, submittedBy); err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
         }
@@ -2292,17 +2310,24 @@ func SoftDeleteVolume(c context.Context, id string, deletedBy string) error <spa
         _, err := database.Db.Collection(volumeMetaCollection).UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: id}},
-                bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: now}, {Key: "deleted_by", Value: deletedBy}}}},
+                bson.D{{Key: "$set", Value: bson.D{
+                        {Key: "deleted_at", Value: now}, {Key: "deleted_by", Value: deletedBy},
+                        {Key: "updated_at", Value: now}, {Key: "updated_by", Value: deletedBy},
+                }}},
         )
         return err
 }</span>
 
 // RestoreVolume clears a soft-deleted volume's deletion, returning it to QueryVolumes.
-func RestoreVolume(c context.Context, id string) error <span class="cov1" title="1">{
+func RestoreVolume(c context.Context, id string, restoredBy string) error <span class="cov1" title="1">{
+        now := time.Now()
         _, err := database.Db.Collection(volumeMetaCollection).UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: id}},
-                bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: nil}, {Key: "deleted_by", Value: nil}}}},
+                bson.D{{Key: "$set", Value: bson.D{
+                        {Key: "deleted_at", Value: nil}, {Key: "deleted_by", Value: nil},
+                        {Key: "updated_at", Value: now}, {Key: "updated_by", Value: restoredBy},
+                }}},
         )
         return err
 }</span>
@@ -2427,8 +2452,9 @@ func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseI
 }
 
 // flattenVolume merges a meta record with its current version into the pre-versioning VolumeVO
-// shape: creation/deletion audit comes from meta, the "last updated" audit comes from the
-// version's own submission audit (its most recent live edit).
+// shape. The full audit block (created/updated/deleted) comes from the meta record - the stable
+// record's own audit trail, stamped whenever its current-version pointer moves or it is
+// soft-deleted (PADR-0001).
 func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO <span class="cov9" title="184">{
         publishers, studios, licenses := resolveVolumeRelations(c, version.PublisherIds, version.StudioIds, version.LicenseIds)
 
@@ -2450,8 +2476,8 @@ func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.V
                 AuditableVO: modelcorevo.AuditableVO{
                         CreatedAt: meta.CreatedAt,
                         CreatedBy: meta.CreatedBy,
-                        UpdatedAt: version.SubmittedAt,
-                        UpdatedBy: version.SubmittedBy,
+                        UpdatedAt: meta.UpdatedAt,
+                        UpdatedBy: meta.UpdatedBy,
                         DeletedAt: meta.DeletedAt,
                         DeletedBy: meta.DeletedBy,
                 },
@@ -2707,6 +2733,8 @@ func MigrateVolumes(c context.Context) (int, error) <span class="cov7" title="3"
                         CurrentVersion: 1,
                         CreatedAt:      v.CreatedAt,
                         CreatedBy:      v.CreatedBy,
+                        UpdatedAt:      v.UpdatedAt,
+                        UpdatedBy:      v.UpdatedBy,
                         DeletedAt:      v.DeletedAt,
                         DeletedBy:      v.DeletedBy,
                 }
@@ -2918,11 +2946,15 @@ func archiveVolumeVersion(c context.Context, recordID string, version int) error
         return setVolumeVersionState(c, recordID, version, bson.D{{Key: "state", Value: string(models.VersionStateArchived)}})
 }</span>
 
-func setVolumeMetaCurrentVersion(c context.Context, recordID string, version int) error <span class="cov5" title="14">{
+func setVolumeMetaCurrentVersion(c context.Context, recordID string, version int, actingUserID string) error <span class="cov5" title="14">{
         _, err := database.Db.Collection(volumeMetaCollection).UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: recordID}},
-                bson.D{{Key: "$set", Value: bson.D{{Key: "current_version", Value: version}}}},
+                bson.D{{Key: "$set", Value: bson.D{
+                        {Key: "current_version", Value: version},
+                        {Key: "updated_at", Value: time.Now()},
+                        {Key: "updated_by", Value: actingUserID},
+                }}},
         )
         return err
 }</span>
@@ -3132,7 +3164,7 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
                 <span class="cov1" title="1">if err := setVolumeVersionState(c, id, version, update); err != nil </span><span class="cov0" title="0">{
                         return nil, nil, err
                 }</span>
-                <span class="cov1" title="1">if err := setVolumeMetaCurrentVersion(c, id, version); err != nil </span><span class="cov0" title="0">{
+                <span class="cov1" title="1">if err := setVolumeMetaCurrentVersion(c, id, version, reviewedBy); err != nil </span><span class="cov0" title="0">{
                         return nil, nil, err
                 }</span>
                 <span class="cov1" title="1">return volumeVersionModelToVO(c, submitted), nil, nil</span>
@@ -3196,7 +3228,7 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
         <span class="cov2" title="2">if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil </span><span class="cov0" title="0">{
                 return nil, nil, err
         }</span>
-        <span class="cov2" title="2">if err := setVolumeMetaCurrentVersion(c, id, nextVersion); err != nil </span><span class="cov0" title="0">{
+        <span class="cov2" title="2">if err := setVolumeMetaCurrentVersion(c, id, nextVersion, reviewedBy); err != nil </span><span class="cov0" title="0">{
                 return nil, nil, err
         }</span>
         <span class="cov2" title="2">if err := setVolumeVersionState(c, id, version, bson.D{
@@ -3314,7 +3346,7 @@ func RetractVolumeVersion(c context.Context, id string, version int, submitterID
 // SetCurrentVolumeVersion rolls a record back (or forward) to an arbitrary existing version,
 // independent of the submit/review flow - marking that version live and archiving whichever
 // version was previously current.
-func SetCurrentVolumeVersion(c context.Context, id string, version int) (*vo.VolumeVersionVO, error) <span class="cov1" title="1">{
+func SetCurrentVolumeVersion(c context.Context, id string, version int, actingUserID string) (*vo.VolumeVersionVO, error) <span class="cov1" title="1">{
         meta, err := getVolumeMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
@@ -3341,7 +3373,7 @@ func SetCurrentVolumeVersion(c context.Context, id string, version int) (*vo.Vol
         <span class="cov1" title="1">if err := setVolumeVersionState(c, id, version, bson.D{{Key: "state", Value: string(models.VersionStateLive)}}); err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov1" title="1">if err := setVolumeMetaCurrentVersion(c, id, version); err != nil </span><span class="cov0" title="0">{
+        <span class="cov1" title="1">if err := setVolumeMetaCurrentVersion(c, id, version, actingUserID); err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
 
@@ -3376,7 +3408,7 @@ type Client struct {
 // NewClient builds a Client against game-systems-api's base URL. An empty baseURL is accepted so
 // the service can still start when GAMESYSTEMS_API_URL isn't configured; every call will then
 // fail with a transport error, which callers already skip-and-log.
-func NewClient(baseURL string) *Client <span class="cov10" title="2">{
+func NewClient(baseURL string) *Client <span class="cov5" title="2">{
         return &amp;Client{
                 baseURL: baseURL,
                 http: &amp;http.Client{
@@ -3404,6 +3436,27 @@ type gameSystemResponse struct {
         } `json:"tags"`
         SubmittedBy string    `json:"submitted_by"`
         SubmittedAt time.Time `json:"submitted_at"`
+        // Platform audit block from game-systems-api's stable record (EntityMeta), added when that
+        // service adopted the audit-fields convention. Absent on a pre-adoption response, in which
+        // case these decode to zero and the caller falls back to submitted_* below.
+        CreatedBy string    `json:"created_by"`
+        CreatedAt time.Time `json:"created_at"`
+        UpdatedBy string    `json:"updated_by"`
+        UpdatedAt time.Time `json:"updated_at"`
+}
+
+// audit resolves the response's audit fields, preferring the real created_*/updated_* and
+// falling back to the version's submitted_* for a pre-adoption game-systems-api.
+func (r gameSystemResponse) audit() (createdAt, updatedAt time.Time, createdBy, updatedBy string) <span class="cov10" title="4">{
+        createdAt, createdBy = r.CreatedAt, r.CreatedBy
+        if createdAt.IsZero() </span><span class="cov8" title="3">{
+                createdAt, createdBy = r.SubmittedAt, r.SubmittedBy
+        }</span>
+        <span class="cov10" title="4">updatedAt, updatedBy = r.UpdatedAt, r.UpdatedBy
+        if updatedAt.IsZero() </span><span class="cov8" title="3">{
+                updatedAt, updatedBy = createdAt, createdBy
+        }</span>
+        <span class="cov10" title="4">return</span>
 }
 
 // System is the resolved shape a caller needs to fill in a volume's system reference.
@@ -3415,6 +3468,8 @@ type System struct {
         Tags      []modelcore.TagVO
         CreatedBy string
         CreatedAt time.Time
+        UpdatedBy string
+        UpdatedAt time.Time
 }
 
 // Get resolves one game system by id against its current (live) version.
@@ -3442,9 +3497,11 @@ func (c *Client) Get(ctx context.Context, id string) (*System, error) <span clas
                 return nil, fmt.Errorf("game-systems: decode get response: %w", err)
         }</span>
 
-        <span class="cov0" title="0">return &amp;System{
+        <span class="cov0" title="0">createdAt, updatedAt, createdBy, updatedBy := body.audit()
+        return &amp;System{
                 ID: body.RecordID, Name: body.Name, Edition: body.Edition, Notes: body.Notes,
-                Tags: toTagVOs(body.Tags), CreatedBy: body.SubmittedBy, CreatedAt: body.SubmittedAt,
+                Tags:      toTagVOs(body.Tags),
+                CreatedBy: createdBy, CreatedAt: createdAt, UpdatedBy: updatedBy, UpdatedAt: updatedAt,
         }, nil</span>
 }
 
@@ -3473,10 +3530,12 @@ func (c *Client) List(ctx context.Context) ([]*System, error) <span class="cov1"
         }</span>
 
         <span class="cov1" title="1">systems := make([]*System, len(all))
-        for i, gs := range all </span><span class="cov10" title="2">{
+        for i, gs := range all </span><span class="cov5" title="2">{
+                createdAt, updatedAt, createdBy, updatedBy := gs.audit()
                 systems[i] = &amp;System{
                         ID: gs.RecordID, Name: gs.Name, Edition: gs.Edition, Notes: gs.Notes,
-                        Tags: toTagVOs(gs.Tags), CreatedBy: gs.SubmittedBy, CreatedAt: gs.SubmittedAt,
+                        Tags:      toTagVOs(gs.Tags),
+                        CreatedBy: createdBy, CreatedAt: createdAt, UpdatedBy: updatedBy, UpdatedAt: updatedAt,
                 }
         }</span>
         <span class="cov1" title="1">return systems, nil</span>
@@ -3501,10 +3560,10 @@ func (c *Client) GetStats(ctx context.Context) (*Stats, error) <span class="cov1
         }</span>
 
         <span class="cov1" title="1">stats := &amp;Stats{Count: len(systems)}
-        for _, s := range systems </span><span class="cov10" title="2">{
-                if stats.LastUpdated == nil || s.CreatedAt.After(*stats.LastUpdated) </span><span class="cov10" title="2">{
-                        createdAt := s.CreatedAt
-                        stats.LastUpdated = &amp;createdAt
+        for _, s := range systems </span><span class="cov5" title="2">{
+                if stats.LastUpdated == nil || s.UpdatedAt.After(*stats.LastUpdated) </span><span class="cov5" title="2">{
+                        updatedAt := s.UpdatedAt
+                        stats.LastUpdated = &amp;updatedAt
                         stats.MostRecentID = s.ID
                         stats.MostRecentName = s.Name
                 }</span>
@@ -3515,12 +3574,12 @@ func (c *Client) GetStats(ctx context.Context) (*Stats, error) <span class="cov1
 func toTagVOs(tags []struct {
         Name  string `json:"name"`
         Value string `json:"value"`
-}) []modelcore.TagVO <span class="cov10" title="2">{
+}) []modelcore.TagVO <span class="cov5" title="2">{
         out := make([]modelcore.TagVO, 0, len(tags))
         for _, t := range tags </span><span class="cov0" title="0">{
                 out = append(out, modelcore.TagVO{Name: t.Name, Value: t.Value})
         }</span>
-        <span class="cov10" title="2">return out</span>
+        <span class="cov5" title="2">return out</span>
 }
 </pre>
 		
