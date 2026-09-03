@@ -33,7 +33,7 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) {
 		Tags: system.Tags,
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
-			UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+			UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
 		},
 	}, nil
 }
@@ -56,7 +56,7 @@ func QuerySystems(c context.Context) ([]*vo.SystemVO, error) {
 			Tags: system.Tags,
 			AuditableVO: modelcorevo.AuditableVO{
 				CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
-				UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+				UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
 			},
 		}
 	}
@@ -100,7 +100,7 @@ func GetSystemsMap(c context.Context) (map[string]*vo.SystemVO, error) {
 			Tags: system.Tags,
 			AuditableVO: modelcorevo.AuditableVO{
 				CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
-				UpdatedAt: system.CreatedAt, UpdatedBy: system.CreatedBy,
+				UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
 			},
 		}
 	}

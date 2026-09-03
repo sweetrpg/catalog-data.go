@@ -59,8 +59,8 @@ func SoftDeleteLicense(c context.Context, id string, deletedBy string) error {
 }
 
 // RestoreLicense clears a soft-deleted license's deletion, returning it to every normal read path.
-func RestoreLicense(c context.Context, id string) error {
-	return licenseVersioning.restore(c, id)
+func RestoreLicense(c context.Context, id string, restoredBy string) error {
+	return licenseVersioning.restore(c, id, restoredBy)
 }
 
 func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO {
@@ -99,7 +99,7 @@ func flattenLicense(meta *models.EntityMeta, version *models.LicenseVersion) *vo
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
-			UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+			UpdatedAt: meta.UpdatedAt, UpdatedBy: meta.UpdatedBy,
 			DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
 		},
 	}
@@ -186,8 +186,8 @@ func RetractLicenseVersion(c context.Context, id string, version int, submitterI
 }
 
 // SetCurrentLicenseVersion rolls a license back (or forward) to an arbitrary existing version.
-func SetCurrentLicenseVersion(c context.Context, id string, version int) (*vo.LicenseVersionVO, error) {
-	result, err := licenseVersioning.setCurrentVersion(c, id, version)
+func SetCurrentLicenseVersion(c context.Context, id string, version int, actingUserID string) (*vo.LicenseVersionVO, error) {
+	result, err := licenseVersioning.setCurrentVersion(c, id, version, actingUserID)
 	if err != nil || result == nil {
 		return nil, err
 	}

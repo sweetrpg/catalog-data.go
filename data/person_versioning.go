@@ -51,8 +51,8 @@ func SoftDeletePerson(c context.Context, id string, deletedBy string) error {
 }
 
 // RestorePerson clears a soft-deleted person's deletion, returning it to every normal read path.
-func RestorePerson(c context.Context, id string) error {
-	return personVersioning.restore(c, id)
+func RestorePerson(c context.Context, id string, restoredBy string) error {
+	return personVersioning.restore(c, id, restoredBy)
 }
 
 func personVersionToVO(version *models.PersonVersion) *vo.PersonVersionVO {
@@ -85,7 +85,7 @@ func flattenPerson(meta *models.EntityMeta, version *models.PersonVersion) *vo.P
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
-			UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+			UpdatedAt: meta.UpdatedAt, UpdatedBy: meta.UpdatedBy,
 			DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
 		},
 	}
@@ -172,8 +172,8 @@ func RetractPersonVersion(c context.Context, id string, version int, submitterID
 }
 
 // SetCurrentPersonVersion rolls a person back (or forward) to an arbitrary existing version.
-func SetCurrentPersonVersion(c context.Context, id string, version int) (*vo.PersonVersionVO, error) {
-	result, err := personVersioning.setCurrentVersion(c, id, version)
+func SetCurrentPersonVersion(c context.Context, id string, version int, actingUserID string) (*vo.PersonVersionVO, error) {
+	result, err := personVersioning.setCurrentVersion(c, id, version, actingUserID)
 	if err != nil || result == nil {
 		return nil, err
 	}

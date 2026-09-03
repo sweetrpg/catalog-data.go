@@ -53,8 +53,8 @@ func SoftDeleteStudio(c context.Context, id string, deletedBy string) error {
 }
 
 // RestoreStudio clears a soft-deleted studio's deletion, returning it to every normal read path.
-func RestoreStudio(c context.Context, id string) error {
-	return studioVersioning.restore(c, id)
+func RestoreStudio(c context.Context, id string, restoredBy string) error {
+	return studioVersioning.restore(c, id, restoredBy)
 }
 
 func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO {
@@ -87,7 +87,7 @@ func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.S
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
-			UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+			UpdatedAt: meta.UpdatedAt, UpdatedBy: meta.UpdatedBy,
 			DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
 		},
 	}
@@ -174,8 +174,8 @@ func RetractStudioVersion(c context.Context, id string, version int, submitterID
 }
 
 // SetCurrentStudioVersion rolls a studio back (or forward) to an arbitrary existing version.
-func SetCurrentStudioVersion(c context.Context, id string, version int) (*vo.StudioVersionVO, error) {
-	result, err := studioVersioning.setCurrentVersion(c, id, version)
+func SetCurrentStudioVersion(c context.Context, id string, version int, actingUserID string) (*vo.StudioVersionVO, error) {
+	result, err := studioVersioning.setCurrentVersion(c, id, version, actingUserID)
 	if err != nil || result == nil {
 		return nil, err
 	}

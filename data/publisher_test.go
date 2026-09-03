@@ -136,7 +136,7 @@ func (suite *PublisherDataTestSuite) TestSetCurrentPublisherVersion() {
 	}, models.VersionStateLive)
 	assert.NoError(suite.T(), err)
 
-	rolledBack, err := SetCurrentPublisherVersion(suite.T().Context(), suite.seedPublisherID, 1)
+	rolledBack, err := SetCurrentPublisherVersion(suite.T().Context(), suite.seedPublisherID, 1, "test-reviewer")
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "Test Publisher", rolledBack.Name)
 
@@ -182,7 +182,7 @@ func (suite *PublisherDataTestSuite) TestSoftDeletePublisherLifecycle() {
 	assert.NotNil(suite.T(), fetched.DeletedAt)
 	assert.Equal(suite.T(), "admin-1", *fetched.DeletedBy)
 
-	err = RestorePublisher(suite.T().Context(), suite.seedPublisherID)
+	err = RestorePublisher(suite.T().Context(), suite.seedPublisherID, "test-restorer")
 	assert.NoError(suite.T(), err)
 
 	restored, err := GetPublisher(suite.T().Context(), suite.seedPublisherID)

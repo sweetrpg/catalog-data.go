@@ -52,6 +52,27 @@ type gameSystemResponse struct {
 	} `json:"tags"`
 	SubmittedBy string    `json:"submitted_by"`
 	SubmittedAt time.Time `json:"submitted_at"`
+	// Platform audit block from game-systems-api's stable record (EntityMeta), added when that
+	// service adopted the audit-fields convention. Absent on a pre-adoption response, in which
+	// case these decode to zero and the caller falls back to submitted_* below.
+	CreatedBy string    `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedBy string    `json:"updated_by"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// audit resolves the response's audit fields, preferring the real created_*/updated_* and
+// falling back to the version's submitted_* for a pre-adoption game-systems-api.
+func (r gameSystemResponse) audit() (createdAt, updatedAt time.Time, createdBy, updatedBy string) {
+	createdAt, createdBy = r.CreatedAt, r.CreatedBy
+	if createdAt.IsZero() {
+		createdAt, createdBy = r.SubmittedAt, r.SubmittedBy
+	}
+	updatedAt, updatedBy = r.UpdatedAt, r.UpdatedBy
+	if updatedAt.IsZero() {
+		updatedAt, updatedBy = createdAt, createdBy
+	}
+	return
 }
 
 // System is the resolved shape a caller needs to fill in a volume's system reference.
@@ -63,6 +84,8 @@ type System struct {
 	Tags      []modelcore.TagVO
 	CreatedBy string
 	CreatedAt time.Time
+	UpdatedBy string
+	UpdatedAt time.Time
 }
 
 // Get resolves one game system by id against its current (live) version.
@@ -90,9 +113,11 @@ func (c *Client) Get(ctx context.Context, id string) (*System, error) {
 		return nil, fmt.Errorf("game-systems: decode get response: %w", err)
 	}
 
+	createdAt, updatedAt, createdBy, updatedBy := body.audit()
 	return &System{
 		ID: body.RecordID, Name: body.Name, Edition: body.Edition, Notes: body.Notes,
-		Tags: toTagVOs(body.Tags), CreatedBy: body.SubmittedBy, CreatedAt: body.SubmittedAt,
+		Tags:      toTagVOs(body.Tags),
+		CreatedBy: createdBy, CreatedAt: createdAt, UpdatedBy: updatedBy, UpdatedAt: updatedAt,
 	}, nil
 }
 
@@ -122,9 +147,11 @@ func (c *Client) List(ctx context.Context) ([]*System, error) {
 
 	systems := make([]*System, len(all))
 	for i, gs := range all {
+		createdAt, updatedAt, createdBy, updatedBy := gs.audit()
 		systems[i] = &System{
 			ID: gs.RecordID, Name: gs.Name, Edition: gs.Edition, Notes: gs.Notes,
-			Tags: toTagVOs(gs.Tags), CreatedBy: gs.SubmittedBy, CreatedAt: gs.SubmittedAt,
+			Tags:      toTagVOs(gs.Tags),
+			CreatedBy: createdBy, CreatedAt: createdAt, UpdatedBy: updatedBy, UpdatedAt: updatedAt,
 		}
 	}
 	return systems, nil
@@ -150,9 +177,9 @@ func (c *Client) GetStats(ctx context.Context) (*Stats, error) {
 
 	stats := &Stats{Count: len(systems)}
 	for _, s := range systems {
-		if stats.LastUpdated == nil || s.CreatedAt.After(*stats.LastUpdated) {
-			createdAt := s.CreatedAt
-			stats.LastUpdated = &createdAt
+		if stats.LastUpdated == nil || s.UpdatedAt.After(*stats.LastUpdated) {
+			updatedAt := s.UpdatedAt
+			stats.LastUpdated = &updatedAt
 			stats.MostRecentID = s.ID
 			stats.MostRecentName = s.Name
 		}
