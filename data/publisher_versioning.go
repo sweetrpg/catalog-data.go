@@ -55,8 +55,8 @@ func SoftDeletePublisher(c context.Context, id string, deletedBy string) error {
 
 // RestorePublisher clears a soft-deleted publisher's deletion, returning it to every normal read
 // path.
-func RestorePublisher(c context.Context, id string) error {
-	return publisherVersioning.restore(c, id)
+func RestorePublisher(c context.Context, id string, restoredBy string) error {
+	return publisherVersioning.restore(c, id, restoredBy)
 }
 
 func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersionVO {
@@ -89,7 +89,7 @@ func flattenPublisher(meta *models.EntityMeta, version *models.PublisherVersion)
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
-			UpdatedAt: version.SubmittedAt, UpdatedBy: version.SubmittedBy,
+			UpdatedAt: meta.UpdatedAt, UpdatedBy: meta.UpdatedBy,
 			DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
 		},
 	}
@@ -179,8 +179,8 @@ func RetractPublisherVersion(c context.Context, id string, version int, submitte
 }
 
 // SetCurrentPublisherVersion rolls a publisher back (or forward) to an arbitrary existing version.
-func SetCurrentPublisherVersion(c context.Context, id string, version int) (*vo.PublisherVersionVO, error) {
-	result, err := publisherVersioning.setCurrentVersion(c, id, version)
+func SetCurrentPublisherVersion(c context.Context, id string, version int, actingUserID string) (*vo.PublisherVersionVO, error) {
+	result, err := publisherVersioning.setCurrentVersion(c, id, version, actingUserID)
 	if err != nil || result == nil {
 		return nil, err
 	}

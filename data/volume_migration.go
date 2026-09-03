@@ -36,6 +36,8 @@ func MigrateVolumes(c context.Context) (int, error) {
 			CurrentVersion: 1,
 			CreatedAt:      v.CreatedAt,
 			CreatedBy:      v.CreatedBy,
+			UpdatedAt:      v.UpdatedAt,
+			UpdatedBy:      v.UpdatedBy,
 			DeletedAt:      v.DeletedAt,
 			DeletedBy:      v.DeletedBy,
 		}

@@ -46,3 +46,26 @@ func TestGetNotFound(t *testing.T) {
 		t.Fatalf("Get() error = %v, want NotFoundError", err)
 	}
 }
+
+func TestResponseAuditPrefersRealFieldsWithSubmittedFallback(t *testing.T) {
+	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	updated := time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC)
+	submitted := time.Date(2025, 12, 12, 0, 0, 0, 0, time.UTC)
+
+	// Post-adoption: real created_*/updated_* win.
+	full := gameSystemResponse{
+		CreatedAt: created, CreatedBy: "u1", UpdatedAt: updated, UpdatedBy: "u2",
+		SubmittedAt: submitted, SubmittedBy: "s1",
+	}
+	cAt, uAt, cBy, uBy := full.audit()
+	if !cAt.Equal(created) || cBy != "u1" || !uAt.Equal(updated) || uBy != "u2" {
+		t.Errorf("full response: got (%v,%v,%q,%q), want real created/updated", cAt, uAt, cBy, uBy)
+	}
+
+	// Pre-adoption: no created_*/updated_*, fall back to submitted_* for both.
+	legacy := gameSystemResponse{SubmittedAt: submitted, SubmittedBy: "s1"}
+	cAt, uAt, cBy, uBy = legacy.audit()
+	if !cAt.Equal(submitted) || cBy != "s1" || !uAt.Equal(submitted) || uBy != "s1" {
+		t.Errorf("legacy response: got (%v,%v,%q,%q), want submitted_* fallback", cAt, uAt, cBy, uBy)
+	}
+}

@@ -35,6 +35,8 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 		CurrentVersion: 1,
 		CreatedAt:      now,
 		CreatedBy:      volume.CreatedBy,
+		UpdatedAt:      now,
+		UpdatedBy:      volume.CreatedBy,
 	}
 	if _, err := database.Insert[models.VolumeMeta](volumeMetaCollection, meta); err != nil {
 		logging.Logger.Error("Error while inserting VolumeMeta object", "error", err)
@@ -124,7 +126,7 @@ func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, stat
 		if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil {
 			return nil, err
 		}
-		if err := setVolumeMetaCurrentVersion(c, id, nextVersion); err != nil {
+		if err := setVolumeMetaCurrentVersion(c, id, nextVersion, submittedBy); err != nil {
 			return nil, err
 		}
 	}
@@ -150,17 +152,24 @@ func SoftDeleteVolume(c context.Context, id string, deletedBy string) error {
 	_, err := database.Db.Collection(volumeMetaCollection).UpdateOne(
 		c,
 		bson.D{{Key: "_id", Value: id}},
-		bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: now}, {Key: "deleted_by", Value: deletedBy}}}},
+		bson.D{{Key: "$set", Value: bson.D{
+			{Key: "deleted_at", Value: now}, {Key: "deleted_by", Value: deletedBy},
+			{Key: "updated_at", Value: now}, {Key: "updated_by", Value: deletedBy},
+		}}},
 	)
 	return err
 }
 
 // RestoreVolume clears a soft-deleted volume's deletion, returning it to QueryVolumes.
-func RestoreVolume(c context.Context, id string) error {
+func RestoreVolume(c context.Context, id string, restoredBy string) error {
+	now := time.Now()
 	_, err := database.Db.Collection(volumeMetaCollection).UpdateOne(
 		c,
 		bson.D{{Key: "_id", Value: id}},
-		bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: nil}, {Key: "deleted_by", Value: nil}}}},
+		bson.D{{Key: "$set", Value: bson.D{
+			{Key: "deleted_at", Value: nil}, {Key: "deleted_by", Value: nil},
+			{Key: "updated_at", Value: now}, {Key: "updated_by", Value: restoredBy},
+		}}},
 	)
 	return err
 }
@@ -285,8 +294,9 @@ func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseI
 }
 
 // flattenVolume merges a meta record with its current version into the pre-versioning VolumeVO
-// shape: creation/deletion audit comes from meta, the "last updated" audit comes from the
-// version's own submission audit (its most recent live edit).
+// shape. The full audit block (created/updated/deleted) comes from the meta record - the stable
+// record's own audit trail, stamped whenever its current-version pointer moves or it is
+// soft-deleted (PADR-0001).
 func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO {
 	publishers, studios, licenses := resolveVolumeRelations(c, version.PublisherIds, version.StudioIds, version.LicenseIds)
 
@@ -308,8 +318,8 @@ func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.V
 		AuditableVO: modelcorevo.AuditableVO{
 			CreatedAt: meta.CreatedAt,
 			CreatedBy: meta.CreatedBy,
-			UpdatedAt: version.SubmittedAt,
-			UpdatedBy: version.SubmittedBy,
+			UpdatedAt: meta.UpdatedAt,
+			UpdatedBy: meta.UpdatedBy,
 			DeletedAt: meta.DeletedAt,
 			DeletedBy: meta.DeletedBy,
 		},

@@ -366,7 +366,7 @@ func (suite *VolumeDataTestSuite) TestSetCurrentVolumeVersionRollback() {
 	}, models.VersionStateLive)
 	assert.NoError(suite.T(), err)
 
-	restored, err := SetCurrentVolumeVersion(suite.T().Context(), suite.seedVolumeID, 1)
+	restored, err := SetCurrentVolumeVersion(suite.T().Context(), suite.seedVolumeID, 1, "test-reviewer")
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), models.VersionStateLive, models.VersionState(restored.State))
 
@@ -395,7 +395,7 @@ func (suite *VolumeDataTestSuite) TestSoftDeleteVolumeLifecycle() {
 	assert.NotNil(suite.T(), fetched.DeletedAt)
 	assert.Equal(suite.T(), "admin-1", *fetched.DeletedBy)
 
-	err = RestoreVolume(suite.T().Context(), suite.seedVolumeID)
+	err = RestoreVolume(suite.T().Context(), suite.seedVolumeID, "test-restorer")
 	assert.NoError(suite.T(), err)
 
 	restored, err := GetVolume(suite.T().Context(), suite.seedVolumeID)
