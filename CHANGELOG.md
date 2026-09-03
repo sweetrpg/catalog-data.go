@@ -1,4 +1,11 @@
 
+## 0.17.0 - 2026-09-03
+
+### Added
+- Stamp updated_at/updated_by on meta mutations, soft delete, and creates
+
+
+
 ## 0.16.0 - 2026-09-02
 
 ### Added
