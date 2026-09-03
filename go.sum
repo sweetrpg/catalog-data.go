@@ -29,14 +29,10 @@ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWD
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 github.com/sweetrpg/api-core.go v0.1.1 h1:qqr5Rgiaw7n2RtDZ7fdoy5vw8RT3L42orhJ/x+EYX9w=
 github.com/sweetrpg/api-core.go v0.1.1/go.mod h1:ka2gLYUlukRaBXiaaohfRSHoNH77oSrTkkik07Z+lj0=
-github.com/sweetrpg/catalog-objects.go v0.5.0 h1:v5yyLUHbQ1wQ7r5CjKo/nBazKjDZVEaSjoHaj2l0EcA=
-github.com/sweetrpg/catalog-objects.go v0.5.0/go.mod h1:qwB2oluVsq8WSdnZHQTAZ5Z3ZeYrLkimVZPT/jilDs4=
 github.com/sweetrpg/catalog-objects.go v0.6.0 h1:1yWzmcfOrMWF8GC4lYsq6165FNeR4ZYY+bmGlk1xuzc=
 github.com/sweetrpg/catalog-objects.go v0.6.0/go.mod h1:qwB2oluVsq8WSdnZHQTAZ5Z3ZeYrLkimVZPT/jilDs4=
 github.com/sweetrpg/common.go v0.0.16 h1:XT8PwUXz0BOMIITXLjw3G6rEjjRUEs0Xs4+R9o2fVBk=
 github.com/sweetrpg/common.go v0.0.16/go.mod h1:PVpjDIeB/bZYJZk5fc8whuqVJE8K5k/DsO3o+aZFEcE=
-github.com/sweetrpg/model-core.go v0.0.173 h1:mIZ4z0ETkCH7I3Az0jwTFOyh66OTm7Z4/f0Rx/w+5Fk=
-github.com/sweetrpg/model-core.go v0.0.173/go.mod h1:8L1qsYxAhEe/nx5yUxvaosPtpRlUnLuXj+GI76zpQok=
 github.com/sweetrpg/model-core.go v0.1.0 h1:ac8kdyj7oLN706JYyUvMB4T0HRkq9gmzObn3YMUTqCo=
 github.com/sweetrpg/model-core.go v0.1.0/go.mod h1:aufDyXjagNyPQADwa6INTv1OI/rIOSjTXtqkzcw1fgA=
 github.com/sweetrpg/mongodb.go v0.0.193 h1:9SvQK3QYftFP1GglMrMvBBlWbIAnSnjQ2Vg13uxQLkQ=
@@ -119,7 +115,7 @@ google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa h1:
 google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa/go.mod h1:q4lMZS6kskjT5HvCPrnnypcDPVJqT/f4nfxmkE7gryY=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa h1:mZHHdPZl0dbGHCflZgAq/Q468DWVFcU2whhB2KAo8fk=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
-google.golang.org/grpc v1.82.1 h1:NnAxzGRA0677vCa4BUkOAnO5+FfQqVl9iUXeD0IqcGE=
-google.golang.org/grpc v1.82.1/go.mod h1:yzTZ1TB1Z3SG+LIYaI+WiE8D5+PZ3ArnrSp8zF3+/ZA=
+google.golang.org/grpc v1.83.1 h1:HIO0+BEtBP6soyqvqC8sNUjZ7bTs+0hFQuFF+RAy++Y=
+google.golang.org/grpc v1.83.1/go.mod h1:kDyl6SKsiHKt0uylY5gtn5cEjkrIOhQOGDgIc4JGwzQ=
 google.golang.org/protobuf v1.36.11 h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
 google.golang.org/protobuf v1.36.11/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
