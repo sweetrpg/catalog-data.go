@@ -91,11 +91,15 @@ func archiveVolumeVersion(c context.Context, recordID string, version int) error
 	return setVolumeVersionState(c, recordID, version, bson.D{{Key: "state", Value: string(models.VersionStateArchived)}})
 }
 
-func setVolumeMetaCurrentVersion(c context.Context, recordID string, version int) error {
+func setVolumeMetaCurrentVersion(c context.Context, recordID string, version int, actingUserID string) error {
 	_, err := database.Db.Collection(volumeMetaCollection).UpdateOne(
 		c,
 		bson.D{{Key: "_id", Value: recordID}},
-		bson.D{{Key: "$set", Value: bson.D{{Key: "current_version", Value: version}}}},
+		bson.D{{Key: "$set", Value: bson.D{
+			{Key: "current_version", Value: version},
+			{Key: "updated_at", Value: time.Now()},
+			{Key: "updated_by", Value: actingUserID},
+		}}},
 	)
 	return err
 }
@@ -305,7 +309,7 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
 		if err := setVolumeVersionState(c, id, version, update); err != nil {
 			return nil, nil, err
 		}
-		if err := setVolumeMetaCurrentVersion(c, id, version); err != nil {
+		if err := setVolumeMetaCurrentVersion(c, id, version, reviewedBy); err != nil {
 			return nil, nil, err
 		}
 		return volumeVersionModelToVO(c, submitted), nil, nil
@@ -369,7 +373,7 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
 	if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil {
 		return nil, nil, err
 	}
-	if err := setVolumeMetaCurrentVersion(c, id, nextVersion); err != nil {
+	if err := setVolumeMetaCurrentVersion(c, id, nextVersion, reviewedBy); err != nil {
 		return nil, nil, err
 	}
 	if err := setVolumeVersionState(c, id, version, bson.D{
@@ -487,7 +491,7 @@ func RetractVolumeVersion(c context.Context, id string, version int, submitterID
 // SetCurrentVolumeVersion rolls a record back (or forward) to an arbitrary existing version,
 // independent of the submit/review flow - marking that version live and archiving whichever
 // version was previously current.
-func SetCurrentVolumeVersion(c context.Context, id string, version int) (*vo.VolumeVersionVO, error) {
+func SetCurrentVolumeVersion(c context.Context, id string, version int, actingUserID string) (*vo.VolumeVersionVO, error) {
 	meta, err := getVolumeMeta(c, id)
 	if err != nil {
 		return nil, err
@@ -514,7 +518,7 @@ func SetCurrentVolumeVersion(c context.Context, id string, version int) (*vo.Vol
 	if err := setVolumeVersionState(c, id, version, bson.D{{Key: "state", Value: string(models.VersionStateLive)}}); err != nil {
 		return nil, err
 	}
-	if err := setVolumeMetaCurrentVersion(c, id, version); err != nil {
+	if err := setVolumeMetaCurrentVersion(c, id, version, actingUserID); err != nil {
 		return nil, err
 	}
 

@@ -156,11 +156,15 @@ func (cfg entityVersioningConfig[T]) archiveVersion(c context.Context, recordID 
 	return cfg.setVersionState(c, recordID, version, bson.D{{Key: "state", Value: string(models.VersionStateArchived)}})
 }
 
-func (cfg entityVersioningConfig[T]) setMetaCurrentVersion(c context.Context, recordID string, version int) error {
+func (cfg entityVersioningConfig[T]) setMetaCurrentVersion(c context.Context, recordID string, version int, actingUserID string) error {
 	_, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
 		c,
 		bson.D{{Key: "_id", Value: recordID}},
-		bson.D{{Key: "$set", Value: bson.D{{Key: "current_version", Value: version}}}},
+		bson.D{{Key: "$set", Value: bson.D{
+			{Key: "current_version", Value: version},
+			{Key: "updated_at", Value: time.Now()},
+			{Key: "updated_by", Value: actingUserID},
+		}}},
 	)
 	return err
 }
@@ -202,7 +206,10 @@ func (cfg entityVersioningConfig[T]) changedFields(submitted, base *T) []string 
 func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, createdBy string) (*string, error) {
 	now := time.Now()
 	metaID := primitive.NewObjectID().Hex()
-	meta := models.EntityMeta{ID: metaID, CurrentVersion: 1, CreatedAt: now, CreatedBy: createdBy}
+	meta := models.EntityMeta{
+		ID: metaID, CurrentVersion: 1,
+		CreatedAt: now, CreatedBy: createdBy, UpdatedAt: now, UpdatedBy: createdBy,
+	}
 	if _, err := database.Insert[models.EntityMeta](cfg.metaCollection, meta); err != nil {
 		return nil, err
 	}
@@ -264,7 +271,7 @@ func (cfg entityVersioningConfig[T]) createVersionWithSubmission(c context.Conte
 		if err := cfg.archiveVersion(c, id, meta.CurrentVersion); err != nil {
 			return nil, err
 		}
-		if err := cfg.setMetaCurrentVersion(c, id, nextVersion); err != nil {
+		if err := cfg.setMetaCurrentVersion(c, id, nextVersion, submittedBy); err != nil {
 			return nil, err
 		}
 	}
@@ -347,7 +354,7 @@ func (cfg entityVersioningConfig[T]) acceptVersion(c context.Context, id string,
 		}); err != nil {
 			return nil, nil, err
 		}
-		if err := cfg.setMetaCurrentVersion(c, id, version); err != nil {
+		if err := cfg.setMetaCurrentVersion(c, id, version, reviewedBy); err != nil {
 			return nil, nil, err
 		}
 		return submitted, nil, nil
@@ -412,7 +419,7 @@ func (cfg entityVersioningConfig[T]) acceptVersion(c context.Context, id string,
 	if err := cfg.archiveVersion(c, id, meta.CurrentVersion); err != nil {
 		return nil, nil, err
 	}
-	if err := cfg.setMetaCurrentVersion(c, id, nextVersion); err != nil {
+	if err := cfg.setMetaCurrentVersion(c, id, nextVersion, reviewedBy); err != nil {
 		return nil, nil, err
 	}
 	if err := cfg.setVersionState(c, id, version, bson.D{
@@ -474,7 +481,7 @@ func (cfg entityVersioningConfig[T]) retractVersion(c context.Context, id string
 }
 
 // setCurrentVersion rolls a record back (or forward) to an arbitrary existing version.
-func (cfg entityVersioningConfig[T]) setCurrentVersion(c context.Context, id string, version int) (*T, error) {
+func (cfg entityVersioningConfig[T]) setCurrentVersion(c context.Context, id string, version int, actingUserID string) (*T, error) {
 	meta, err := cfg.getMeta(c, id)
 	if err != nil {
 		return nil, err
@@ -498,7 +505,7 @@ func (cfg entityVersioningConfig[T]) setCurrentVersion(c context.Context, id str
 	if err := cfg.setVersionState(c, id, version, bson.D{{Key: "state", Value: string(models.VersionStateLive)}}); err != nil {
 		return nil, err
 	}
-	if err := cfg.setMetaCurrentVersion(c, id, version); err != nil {
+	if err := cfg.setMetaCurrentVersion(c, id, version, actingUserID); err != nil {
 		return nil, err
 	}
 	cfg.lifecycle(target).State = models.VersionStateLive
@@ -513,17 +520,24 @@ func (cfg entityVersioningConfig[T]) softDelete(c context.Context, id string, de
 	_, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
 		c,
 		bson.D{{Key: "_id", Value: id}},
-		bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: now}, {Key: "deleted_by", Value: deletedBy}}}},
+		bson.D{{Key: "$set", Value: bson.D{
+			{Key: "deleted_at", Value: now}, {Key: "deleted_by", Value: deletedBy},
+			{Key: "updated_at", Value: now}, {Key: "updated_by", Value: deletedBy},
+		}}},
 	)
 	return err
 }
 
 // restore clears the meta record's deleted_at/deleted_by, returning it to every normal read path.
-func (cfg entityVersioningConfig[T]) restore(c context.Context, id string) error {
+func (cfg entityVersioningConfig[T]) restore(c context.Context, id string, restoredBy string) error {
+	now := time.Now()
 	_, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
 		c,
 		bson.D{{Key: "_id", Value: id}},
-		bson.D{{Key: "$set", Value: bson.D{{Key: "deleted_at", Value: nil}, {Key: "deleted_by", Value: nil}}}},
+		bson.D{{Key: "$set", Value: bson.D{
+			{Key: "deleted_at", Value: nil}, {Key: "deleted_by", Value: nil},
+			{Key: "updated_at", Value: now}, {Key: "updated_by", Value: restoredBy},
+		}}},
 	)
 	return err
 }
@@ -571,7 +585,9 @@ func migrateEntity[Old any, New any](c context.Context, cfg migrationConfig[Old,
 
 		aud := cfg.auditable(old)
 		meta := models.EntityMeta{
-			ID: id, CurrentVersion: 1, CreatedAt: aud.CreatedAt, CreatedBy: aud.CreatedBy,
+			ID: id, CurrentVersion: 1,
+			CreatedAt: aud.CreatedAt, CreatedBy: aud.CreatedBy,
+			UpdatedAt: aud.UpdatedAt, UpdatedBy: aud.UpdatedBy,
 			DeletedAt: aud.DeletedAt, DeletedBy: aud.DeletedBy,
 		}
 		if _, err := database.Insert[models.EntityMeta](cfg.versioning.metaCollection, meta); err != nil {
