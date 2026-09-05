@@ -57,7 +57,7 @@
 				
 				<option value="file0">github.com/sweetrpg/catalog-data.go/data/contribution.go (60.4%)</option>
 				
-				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (59.1%)</option>
+				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (59.0%)</option>
 				
 				<option value="file2">github.com/sweetrpg/catalog-data.go/data/license_versioning.go (22.7%)</option>
 				
@@ -71,13 +71,13 @@
 				
 				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_client.go (0.0%)</option>
 				
-				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (64.2%)</option>
+				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (71.3%)</option>
 				
 				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
 				
 				<option value="file10">github.com/sweetrpg/catalog-data.go/data/volume_system_titles.go (88.9%)</option>
 				
-				<option value="file11">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (64.4%)</option>
+				<option value="file11">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (64.5%)</option>
 				
 				<option value="file12">github.com/sweetrpg/catalog-data.go/gamesystems/client.go (72.9%)</option>
 				
@@ -329,21 +329,22 @@ type TypeStats struct {
         MostRecentName string
 }
 
-// stats computes a TypeStats over cfg's live version collection - sorted-descending-limit-1 for
-// the most recent record (design.md's decision: necessary anyway since "most recent" needs the
-// specific record, not just a max timestamp, unlike GetCatalogStats' volume-only precedent) plus
-// a separate unlimited count query, matching this package's existing "no driver-level
-// CountDocuments" convention (see GetCatalogStats).
+// stats computes a TypeStats over cfg's live version collection - a driver-level CountDocuments
+// for the count (was `len(unlimited Query(...))`, which pulled every live document over the wire
+// just to count them - fine at hobby-catalog scale, not once a bulk import inflates a collection)
+// plus sorted-descending-limit-1 for the most recent record (design.md's decision: necessary
+// anyway since "most recent" needs the specific record, not just a max timestamp, unlike
+// GetCatalogStats' volume-only precedent). Both queries share the state+submitted_at index
+// ensureIndexes creates below.
 func (cfg entityVersioningConfig[T]) stats(c context.Context) (*TypeStats, error) <span class="cov2" title="2">{
         filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
 
-        countProjection := bson.D{{Key: "record_id", Value: 1}}
-        all, err := database.Query[T](cfg.versionCollection, filter, nil, countProjection, 0, 0)
+        count, err := database.Db.Collection(cfg.versionCollection).CountDocuments(c, filter)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("%s: count live versions: %w", cfg.typeName, err)
         }</span>
 
-        <span class="cov2" title="2">stats := &amp;TypeStats{Count: len(all)}
+        <span class="cov2" title="2">stats := &amp;TypeStats{Count: int(count)}
         if stats.Count == 0 </span><span class="cov0" title="0">{
                 return stats, nil
         }</span>
@@ -377,6 +378,15 @@ func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <spa
         })
         if err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("%s: create record_id+state index: %w", cfg.typeName, err)
+        }</span>
+        // Backs stats()'s count (state-only equality) and most-recent (state equality + submitted_at
+        // sort) queries - neither can use the record_id-leading index above, since neither filters on
+        // record_id.
+        <span class="cov8" title="22">_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
+                Keys: bson.D{{Key: "state", Value: 1}, {Key: "submitted_at", Value: -1}},
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("%s: create state+submitted_at index: %w", cfg.typeName, err)
         }</span>
         <span class="cov8" title="22">return nil</span>
 }
@@ -2180,7 +2190,7 @@ import (
 )
 
 // AddVolume creates a volume's meta record and its first (live) version.
-func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov7" title="51">{
+func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov7" title="52">{
         logging.Logger.Info("AddVolume", "c", c, "volume", volume)
 
         _, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
@@ -2201,7 +2211,7 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
                 return nil, err
         }</span>
 
-        <span class="cov7" title="51">version := volumeVOToVersionFields(volume)
+        <span class="cov7" title="52">version := volumeVOToVersionFields(volume)
         version.ID = primitive.NewObjectID().Hex()
         version.RecordID = metaID
         version.Version = 1
@@ -2214,7 +2224,7 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
                 return nil, err
         }</span>
 
-        <span class="cov7" title="51">return &amp;metaID, nil</span>
+        <span class="cov7" title="52">return &amp;metaID, nil</span>
 }
 
 // UpdateVolume creates a new version of the volume rather than mutating the record in place.
@@ -2366,20 +2376,20 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="
 // counterpart to the *ByIDs functions below, which resolve IDs back into VOs. Both directions
 // live here rather than using util.Map (which always dereferences into a value slice) since
 // VolumeVO's relationship fields are pointer slices - see that struct's own doc comment for why.
-func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="335">{
+func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="340">{
         ids := make([]string, 0, len(relations))
         for _, r := range relations </span><span class="cov5" title="21">{
                 if r != nil </span><span class="cov5" title="21">{
                         ids = append(ids, id(r))
                 }</span>
         }
-        <span class="cov10" title="335">return ids</span>
+        <span class="cov10" title="340">return ids</span>
 }
 
 // systemsFromTitles builds a volume's system relationship VOs from its denormalized
 // SystemTitles snapshot - no game-systems-api call. A system whose stored title is absent or
 // empty renders its ID as the name (see catalog-volume-detail spec's ID-fallback requirement).
-func systemsFromTitles(systemIds []string, titles map[string]string) []*vo.SystemVO <span class="cov9" title="214">{
+func systemsFromTitles(systemIds []string, titles map[string]string) []*vo.SystemVO <span class="cov9" title="217">{
         systems := make([]*vo.SystemVO, 0, len(systemIds))
         for _, id := range systemIds </span><span class="cov6" title="27">{
                 name := id
@@ -2388,13 +2398,13 @@ func systemsFromTitles(systemIds []string, titles map[string]string) []*vo.Syste
                 }</span>
                 <span class="cov6" title="27">systems = append(systems, &amp;vo.SystemVO{ID: id, GameSystem: name})</span>
         }
-        <span class="cov9" title="214">return systems</span>
+        <span class="cov9" title="217">return systems</span>
 }
 
 // pruneSystemTitles drops any stored title whose system is no longer referenced, keeping the
 // map parallel to systemIds when a reference is removed on edit.
-func pruneSystemTitles(titles map[string]string, systemIds []string) map[string]string <span class="cov7" title="67">{
-        if len(titles) == 0 </span><span class="cov7" title="59">{
+func pruneSystemTitles(titles map[string]string, systemIds []string) map[string]string <span class="cov7" title="68">{
+        if len(titles) == 0 </span><span class="cov7" title="60">{
                 return nil
         }</span>
         <span class="cov4" title="8">kept := make(map[string]string, len(systemIds))
@@ -2414,7 +2424,7 @@ func pruneSystemTitles(titles map[string]string, systemIds []string) map[string]
 // so this makes no game-systems-api call.
 func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseIds []string) (
         publishers []*vo.PublisherVO, studios []*vo.StudioVO, licenses []*vo.LicenseVO,
-) <span class="cov9" title="214">{
+) <span class="cov9" title="217">{
         publishers = make([]*vo.PublisherVO, 0, len(publisherIds))
         for _, id := range publisherIds </span><span class="cov2" title="2">{
                 publisher, err := GetPublisher(c, id)
@@ -2426,7 +2436,7 @@ func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseI
                         publishers = append(publishers, publisher)
                 }</span>
         }
-        <span class="cov9" title="214">studios = make([]*vo.StudioVO, 0, len(studioIds))
+        <span class="cov9" title="217">studios = make([]*vo.StudioVO, 0, len(studioIds))
         for _, id := range studioIds </span><span class="cov0" title="0">{
                 studio, err := GetStudio(c, id)
                 if err != nil </span><span class="cov0" title="0">{
@@ -2437,7 +2447,7 @@ func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseI
                         studios = append(studios, studio)
                 }</span>
         }
-        <span class="cov9" title="214">licenses = make([]*vo.LicenseVO, 0, len(licenseIds))
+        <span class="cov9" title="217">licenses = make([]*vo.LicenseVO, 0, len(licenseIds))
         for _, id := range licenseIds </span><span class="cov0" title="0">{
                 license, err := GetLicense(c, id)
                 if err != nil </span><span class="cov0" title="0">{
@@ -2448,14 +2458,14 @@ func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseI
                         licenses = append(licenses, license)
                 }</span>
         }
-        <span class="cov9" title="214">return</span>
+        <span class="cov9" title="217">return</span>
 }
 
 // flattenVolume merges a meta record with its current version into the pre-versioning VolumeVO
 // shape. The full audit block (created/updated/deleted) comes from the meta record - the stable
 // record's own audit trail, stamped whenever its current-version pointer moves or it is
 // soft-deleted (PADR-0001).
-func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO <span class="cov9" title="184">{
+func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO <span class="cov9" title="187">{
         publishers, studios, licenses := resolveVolumeRelations(c, version.PublisherIds, version.StudioIds, version.LicenseIds)
 
         return &amp;vo.VolumeVO{
@@ -2522,7 +2532,7 @@ func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *v
 // volumeVOToVersionFields maps a request VolumeVO's substantive fields onto a new
 // models.VolumeVersion - the caller fills in the version-lifecycle fields (ID, RecordID,
 // Version, State, BaseVersion, SubmittedBy/At).
-func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion <span class="cov7" title="67">{
+func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion <span class="cov7" title="68">{
         return models.VolumeVersion{
                 Title:          volume.Title,
                 Description:    volume.Description,
@@ -2571,20 +2581,20 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
         // game-systems-api call. This replaced a per-volume GetSystem fan-out that was measured
         // taking 10+ seconds for one page.
         <span class="cov4" title="9">vos := make([]*vo.VolumeVO, 0, len(versions))
-        for _, version := range versions </span><span class="cov8" title="161">{
+        for _, version := range versions </span><span class="cov8" title="164">{
                 meta, err := getVolumeMeta(c, version.RecordID)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No VolumeMeta found for VolumeVersion record %s: %s", version.RecordID, err.Error()))
                         continue</span>
                 }
-                <span class="cov8" title="161">if meta == nil </span><span class="cov0" title="0">{
+                <span class="cov8" title="164">if meta == nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No VolumeMeta found for VolumeVersion record %s", version.RecordID))
                         continue</span>
                 }
-                <span class="cov8" title="161">if meta.DeletedAt != nil </span><span class="cov1" title="1">{
+                <span class="cov8" title="164">if meta.DeletedAt != nil </span><span class="cov1" title="1">{
                         continue</span>
                 }
-                <span class="cov8" title="160">vos = append(vos, flattenVolume(c, meta, version))</span>
+                <span class="cov8" title="163">vos = append(vos, flattenVolume(c, meta, version))</span>
         }
 
         <span class="cov4" title="9">logging.Logger.Debug("returning volume value objects", "vos", vos)
@@ -2625,11 +2635,11 @@ type CatalogStats struct {
         LastUpdated *time.Time
 }
 
-// GetCatalogStats computes CatalogStats over every live volume version. Uses an unlimited
-// database.Query (limit 0) rather than a driver-level CountDocuments/aggregate, matching this
-// package's existing pattern of going through database.Query rather than reaching past it to
-// the raw mongo-driver collection - catalog sizes here are small enough (an indie/hobby
-// catalog, not a high-volume one) that this isn't a real cost.
+// GetCatalogStats computes CatalogStats over every live volume version - a driver-level
+// CountDocuments for the count plus a sorted-descending-limit-1 query for LastUpdated (was
+// `len(unlimited Query(...))` pulling every live document over the wire just to count/max them;
+// fine at hobby-catalog scale, not once a bulk import inflates the collection). Both queries
+// share the state+submitted_at index EnsureVolumeVersioningIndexes creates.
 func GetCatalogStats(c context.Context) (*CatalogStats, error) <span class="cov1" title="1">{
         logging.Logger.Info("GetCatalogStats", "c", c)
 
@@ -2637,21 +2647,28 @@ func GetCatalogStats(c context.Context) (*CatalogStats, error) <span class="cov1
         defer span.End()
 
         filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
-        projection := bson.D{{Key: "submitted_at", Value: 1}}
 
-        versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, projection, 0, 0)
+        count, err := database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
         if err != nil </span><span class="cov0" title="0">{
                 logging.Logger.Error(fmt.Sprintf("Error while querying database for catalog stats: %+v", err))
                 return nil, err
         }</span>
 
-        <span class="cov1" title="1">stats := &amp;CatalogStats{VolumeCount: len(versions)}
-        for _, version := range versions </span><span class="cov5" title="15">{
-                if stats.LastUpdated == nil || version.SubmittedAt.After(*stats.LastUpdated) </span><span class="cov4" title="13">{
-                        submittedAt := version.SubmittedAt
-                        stats.LastUpdated = &amp;submittedAt
-                }</span>
-        }
+        <span class="cov1" title="1">stats := &amp;CatalogStats{VolumeCount: int(count)}
+        if stats.VolumeCount == 0 </span><span class="cov0" title="0">{
+                return stats, nil
+        }</span>
+
+        <span class="cov1" title="1">sortOrder := bson.D{{Key: "submitted_at", Value: -1}}
+        projection := bson.D{{Key: "submitted_at", Value: 1}}
+        recent, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sortOrder, projection, 0, 1)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Logger.Error(fmt.Sprintf("Error while querying database for catalog stats: %+v", err))
+                return nil, err
+        }</span>
+        <span class="cov1" title="1">if len(recent) &gt; 0 </span><span class="cov1" title="1">{
+                stats.LastUpdated = &amp;recent[0].SubmittedAt
+        }</span>
 
         <span class="cov1" title="1">logging.Logger.Debug("returning catalog stats", "stats", stats)
         return stats, nil</span>
@@ -2661,33 +2678,32 @@ func GetCatalogStats(c context.Context) (*CatalogStats, error) <span class="cov1
 // TypeStats-shaped like the other five entity types' Get*Stats (catalog-landing-page-summary),
 // but implemented directly against volumeVersionCollection rather than entityVersioningConfig
 // since Volume isn't on that shared engine (see entity_versioning.go's own doc comment).
-func GetVolumeTypeStats(c context.Context) (*TypeStats, error) <span class="cov0" title="0">{
+func GetVolumeTypeStats(c context.Context) (*TypeStats, error) <span class="cov1" title="1">{
         span := tracing.BuildSpanWithParams(c, "volumes", "db-get-volume-type-stats", apiutil.QueryParams{})
         defer span.End()
 
         filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
 
-        countProjection := bson.D{{Key: "record_id", Value: 1}}
-        all, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, countProjection, 0, 0)
+        count, err := database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("volume: count live versions: %w", err)
         }</span>
 
-        <span class="cov0" title="0">stats := &amp;TypeStats{Count: len(all)}
+        <span class="cov1" title="1">stats := &amp;TypeStats{Count: int(count)}
         if stats.Count == 0 </span><span class="cov0" title="0">{
                 return stats, nil
         }</span>
 
-        <span class="cov0" title="0">sortOrder := bson.D{{Key: "submitted_at", Value: -1}}
+        <span class="cov1" title="1">sortOrder := bson.D{{Key: "submitted_at", Value: -1}}
         recent, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sortOrder, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("volume: query most recent version: %w", err)
         }</span>
-        <span class="cov0" title="0">if len(recent) == 0 </span><span class="cov0" title="0">{
+        <span class="cov1" title="1">if len(recent) == 0 </span><span class="cov0" title="0">{
                 return stats, nil
         }</span>
 
-        <span class="cov0" title="0">submittedAt := recent[0].SubmittedAt
+        <span class="cov1" title="1">submittedAt := recent[0].SubmittedAt
         stats.LastUpdated = &amp;submittedAt
         stats.MostRecentID = recent[0].RecordID
         stats.MostRecentName = recent[0].Title
@@ -2881,7 +2897,7 @@ const (
 // EnsureVolumeVersioningIndexes creates the indexes volume version queries rely on: a unique
 // (record_id, version) index so a version number can never be reused for a record, and a
 // (record_id, state) index for the pending-submission lookup. Safe to call on every startup.
-func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7" title="38">{
+func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7" title="39">{
         _, err := database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
                 Keys:    bson.D{{Key: "record_id", Value: 1}, {Key: "version", Value: 1}},
                 Options: options.Index().SetUnique(true),
@@ -2890,25 +2906,35 @@ func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7"
                 return fmt.Errorf("volumes: create record_id+version index: %w", err)
         }</span>
 
-        <span class="cov7" title="38">_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+        <span class="cov7" title="39">_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
                 Keys: bson.D{{Key: "record_id", Value: 1}, {Key: "state", Value: 1}},
         })
         if err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("volumes: create record_id+state index: %w", err)
         }</span>
 
-        <span class="cov7" title="38">return nil</span>
+        // Backs GetVolumeTypeStats/GetCatalogStats' count (state-only equality) and most-recent
+        // (state equality + submitted_at sort) queries - neither can use the record_id-leading index
+        // above, since neither filters on record_id.
+        <span class="cov7" title="39">_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+                Keys: bson.D{{Key: "state", Value: 1}, {Key: "submitted_at", Value: -1}},
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("volumes: create state+submitted_at index: %w", err)
+        }</span>
+
+        <span class="cov7" title="39">return nil</span>
 }
 
-func getVolumeMeta(c context.Context, id string) (*models.VolumeMeta, error) <span class="cov10" title="212">{
+func getVolumeMeta(c context.Context, id string) (*models.VolumeMeta, error) <span class="cov10" title="215">{
         results, err := database.Query[models.VolumeMeta](volumeMetaCollection, bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov10" title="212">if len(results) == 0 </span><span class="cov3" title="4">{
+        <span class="cov10" title="215">if len(results) == 0 </span><span class="cov3" title="4">{
                 return nil, nil
         }</span>
-        <span class="cov9" title="208">return results[0], nil</span>
+        <span class="cov9" title="211">return results[0], nil</span>
 }
 
 func getVolumeVersion(c context.Context, recordID string, version int) (*models.VolumeVersion, error) <span class="cov7" title="40">{
