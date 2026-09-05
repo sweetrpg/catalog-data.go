@@ -467,11 +467,11 @@ type CatalogStats struct {
 	LastUpdated *time.Time
 }
 
-// GetCatalogStats computes CatalogStats over every live volume version. Uses an unlimited
-// database.Query (limit 0) rather than a driver-level CountDocuments/aggregate, matching this
-// package's existing pattern of going through database.Query rather than reaching past it to
-// the raw mongo-driver collection - catalog sizes here are small enough (an indie/hobby
-// catalog, not a high-volume one) that this isn't a real cost.
+// GetCatalogStats computes CatalogStats over every live volume version - a driver-level
+// CountDocuments for the count plus a sorted-descending-limit-1 query for LastUpdated (was
+// `len(unlimited Query(...))` pulling every live document over the wire just to count/max them;
+// fine at hobby-catalog scale, not once a bulk import inflates the collection). Both queries
+// share the state+submitted_at index EnsureVolumeVersioningIndexes creates.
 func GetCatalogStats(c context.Context) (*CatalogStats, error) {
 	logging.Logger.Info("GetCatalogStats", "c", c)
 
@@ -479,20 +479,27 @@ func GetCatalogStats(c context.Context) (*CatalogStats, error) {
 	defer span.End()
 
 	filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
-	projection := bson.D{{Key: "submitted_at", Value: 1}}
 
-	versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, projection, 0, 0)
+	count, err := database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("Error while querying database for catalog stats: %+v", err))
 		return nil, err
 	}
 
-	stats := &CatalogStats{VolumeCount: len(versions)}
-	for _, version := range versions {
-		if stats.LastUpdated == nil || version.SubmittedAt.After(*stats.LastUpdated) {
-			submittedAt := version.SubmittedAt
-			stats.LastUpdated = &submittedAt
-		}
+	stats := &CatalogStats{VolumeCount: int(count)}
+	if stats.VolumeCount == 0 {
+		return stats, nil
+	}
+
+	sortOrder := bson.D{{Key: "submitted_at", Value: -1}}
+	projection := bson.D{{Key: "submitted_at", Value: 1}}
+	recent, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sortOrder, projection, 0, 1)
+	if err != nil {
+		logging.Logger.Error(fmt.Sprintf("Error while querying database for catalog stats: %+v", err))
+		return nil, err
+	}
+	if len(recent) > 0 {
+		stats.LastUpdated = &recent[0].SubmittedAt
 	}
 
 	logging.Logger.Debug("returning catalog stats", "stats", stats)
@@ -509,13 +516,12 @@ func GetVolumeTypeStats(c context.Context) (*TypeStats, error) {
 
 	filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
 
-	countProjection := bson.D{{Key: "record_id", Value: 1}}
-	all, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, countProjection, 0, 0)
+	count, err := database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
 	if err != nil {
 		return nil, fmt.Errorf("volume: count live versions: %w", err)
 	}
 
-	stats := &TypeStats{Count: len(all)}
+	stats := &TypeStats{Count: int(count)}
 	if stats.Count == 0 {
 		return stats, nil
 	}

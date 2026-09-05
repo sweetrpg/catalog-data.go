@@ -101,6 +101,18 @@ func (suite *VolumeDataTestSuite) TestGetCatalogStats() {
 	assert.NotNil(suite.T(), stats.LastUpdated)
 }
 
+func (suite *VolumeDataTestSuite) TestGetVolumeTypeStats() {
+	stats, err := GetVolumeTypeStats(suite.T().Context())
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), stats)
+	// SetupTest seeds one volume per test run (not cleared between test methods), so an exact
+	// count isn't stable here - only that the seeded volume is reflected at all, via the
+	// CountDocuments-backed count rather than the old len(unlimited Query(...)).
+	assert.GreaterOrEqual(suite.T(), stats.Count, 1)
+	assert.NotNil(suite.T(), stats.LastUpdated)
+	assert.NotEmpty(suite.T(), stats.MostRecentID)
+}
+
 func (suite *VolumeDataTestSuite) TestQueryVolumesProjected() {
 	params := apiutil.QueryParams{
 		Start:      0,
