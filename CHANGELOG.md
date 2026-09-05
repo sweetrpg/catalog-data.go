@@ -1,4 +1,11 @@
 
+## 0.17.1 - 2026-09-05
+
+### Fixed
+- Use CountDocuments for stats, add state+submitted_at index
+
+
+
 ## 0.17.0 - 2026-09-03
 
 ### Added
