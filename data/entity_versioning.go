@@ -71,21 +71,22 @@ type TypeStats struct {
 	MostRecentName string
 }
 
-// stats computes a TypeStats over cfg's live version collection - sorted-descending-limit-1 for
-// the most recent record (design.md's decision: necessary anyway since "most recent" needs the
-// specific record, not just a max timestamp, unlike GetCatalogStats' volume-only precedent) plus
-// a separate unlimited count query, matching this package's existing "no driver-level
-// CountDocuments" convention (see GetCatalogStats).
+// stats computes a TypeStats over cfg's live version collection - a driver-level CountDocuments
+// for the count (was `len(unlimited Query(...))`, which pulled every live document over the wire
+// just to count them - fine at hobby-catalog scale, not once a bulk import inflates a collection)
+// plus sorted-descending-limit-1 for the most recent record (design.md's decision: necessary
+// anyway since "most recent" needs the specific record, not just a max timestamp, unlike
+// GetCatalogStats' volume-only precedent). Both queries share the state+submitted_at index
+// ensureIndexes creates below.
 func (cfg entityVersioningConfig[T]) stats(c context.Context) (*TypeStats, error) {
 	filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
 
-	countProjection := bson.D{{Key: "record_id", Value: 1}}
-	all, err := database.Query[T](cfg.versionCollection, filter, nil, countProjection, 0, 0)
+	count, err := database.Db.Collection(cfg.versionCollection).CountDocuments(c, filter)
 	if err != nil {
 		return nil, fmt.Errorf("%s: count live versions: %w", cfg.typeName, err)
 	}
 
-	stats := &TypeStats{Count: len(all)}
+	stats := &TypeStats{Count: int(count)}
 	if stats.Count == 0 {
 		return stats, nil
 	}
@@ -119,6 +120,15 @@ func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("%s: create record_id+state index: %w", cfg.typeName, err)
+	}
+	// Backs stats()'s count (state-only equality) and most-recent (state equality + submitted_at
+	// sort) queries - neither can use the record_id-leading index above, since neither filters on
+	// record_id.
+	_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
+		Keys: bson.D{{Key: "state", Value: 1}, {Key: "submitted_at", Value: -1}},
+	})
+	if err != nil {
+		return fmt.Errorf("%s: create state+submitted_at index: %w", cfg.typeName, err)
 	}
 	return nil
 }
