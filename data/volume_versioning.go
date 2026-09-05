@@ -42,6 +42,16 @@ func EnsureVolumeVersioningIndexes(ctx context.Context) error {
 		return fmt.Errorf("volumes: create record_id+state index: %w", err)
 	}
 
+	// Backs GetVolumeTypeStats/GetCatalogStats' count (state-only equality) and most-recent
+	// (state equality + submitted_at sort) queries - neither can use the record_id-leading index
+	// above, since neither filters on record_id.
+	_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "state", Value: 1}, {Key: "submitted_at", Value: -1}},
+	})
+	if err != nil {
+		return fmt.Errorf("volumes: create state+submitted_at index: %w", err)
+	}
+
 	return nil
 }
 
