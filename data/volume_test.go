@@ -2,6 +2,7 @@ package data
 
 import (
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,7 @@ import (
 	"github.com/sweetrpg/catalog-objects.go/models"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
+	modelcore "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/constants"
 	"github.com/sweetrpg/mongodb.go/database"
 )
@@ -89,6 +91,42 @@ func (suite *VolumeDataTestSuite) TestQueryVolumesFiltered() {
 	volumes, err := QueryVolumes(suite.T().Context(), params)
 	assert.Nil(suite.T(), err)
 	assert.NotEmpty(suite.T(), volumes)
+}
+
+func (suite *VolumeDataTestSuite) TestGetVolumeTags() {
+	// The suite DB accumulates across runs, so counts aren't stable - only orderability and
+	// membership are asserted. Use distinctive names so no other test collides.
+	_, err := AddVolume(suite.T().Context(), &vo.VolumeVO{
+		Title: "Tagged Volume One",
+		Tags:  []modelcore.TagVO{{Name: "AlphaTag"}, {Name: "RareTag"}},
+	})
+	assert.NoError(suite.T(), err)
+	_, err = AddVolume(suite.T().Context(), &vo.VolumeVO{
+		Title: "Tagged Volume Two",
+		Tags:  []modelcore.TagVO{{Name: "AlphaTag"}},
+	})
+	assert.NoError(suite.T(), err)
+
+	tags, err := GetVolumeTags(suite.T().Context(), 20)
+	assert.NoError(suite.T(), err)
+	// AlphaTag is on at least two volumes, RareTag on one - AlphaTag must rank above RareTag.
+	assert.Contains(suite.T(), tags, "AlphaTag")
+	assert.Contains(suite.T(), tags, "RareTag")
+	assert.True(suite.T(), slices.Index(tags, "AlphaTag") < slices.Index(tags, "RareTag"))
+}
+
+func (suite *VolumeDataTestSuite) TestGetVolumeTagsLimitCapsCloud() {
+	for i := 0; i < 5; i++ {
+		_, err := AddVolume(suite.T().Context(), &vo.VolumeVO{
+			Title: "Many Tags Volume",
+			Tags:  []modelcore.TagVO{{Name: "Unique"}},
+		})
+		assert.NoError(suite.T(), err)
+	}
+
+	tags, err := GetVolumeTags(suite.T().Context(), 2)
+	assert.NoError(suite.T(), err)
+	assert.Len(suite.T(), tags, 2)
 }
 
 func (suite *VolumeDataTestSuite) TestGetCatalogStats() {

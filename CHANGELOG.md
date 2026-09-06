@@ -1,4 +1,11 @@
 
+## 0.18.0 - 2026-09-06
+
+### Added
+- Add GetVolumeTags tag-cloud aggregation
+
+
+
 ## 0.17.1 - 2026-09-05
 
 ### Fixed
