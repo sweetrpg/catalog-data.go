@@ -81,7 +81,7 @@
 				
 				<option value="file12">github.com/sweetrpg/catalog-data.go/data/volume_versioning.go (64.5%)</option>
 				
-				<option value="file13">github.com/sweetrpg/catalog-data.go/gamesystems/client.go (72.9%)</option>
+				<option value="file13">github.com/sweetrpg/catalog-data.go/gamesystems/client.go (73.6%)</option>
 				
 				</select>
 			</div>
@@ -3471,9 +3471,11 @@ func SetCurrentVolumeVersion(c context.Context, id string, version int, actingUs
 package gamesystems
 
 import (
+        "bytes"
         "context"
         "encoding/json"
         "fmt"
+        "io"
         "net/http"
         "time"
 
@@ -3490,7 +3492,7 @@ type Client struct {
 // NewClient builds a Client against game-systems-api's base URL. An empty baseURL is accepted so
 // the service can still start when GAMESYSTEMS_API_URL isn't configured; every call will then
 // fail with a transport error, which callers already skip-and-log.
-func NewClient(baseURL string) *Client <span class="cov5" title="2">{
+func NewClient(baseURL string) *Client <span class="cov7" title="5">{
         return &amp;Client{
                 baseURL: baseURL,
                 http: &amp;http.Client{
@@ -3529,16 +3531,16 @@ type gameSystemResponse struct {
 
 // audit resolves the response's audit fields, preferring the real created_*/updated_* and
 // falling back to the version's submitted_* for a pre-adoption game-systems-api.
-func (r gameSystemResponse) audit() (createdAt, updatedAt time.Time, createdBy, updatedBy string) <span class="cov10" title="4">{
+func (r gameSystemResponse) audit() (createdAt, updatedAt time.Time, createdBy, updatedBy string) <span class="cov10" title="10">{
         createdAt, createdBy = r.CreatedAt, r.CreatedBy
-        if createdAt.IsZero() </span><span class="cov8" title="3">{
+        if createdAt.IsZero() </span><span class="cov9" title="9">{
                 createdAt, createdBy = r.SubmittedAt, r.SubmittedBy
         }</span>
-        <span class="cov10" title="4">updatedAt, updatedBy = r.UpdatedAt, r.UpdatedBy
-        if updatedAt.IsZero() </span><span class="cov8" title="3">{
+        <span class="cov10" title="10">updatedAt, updatedBy = r.UpdatedAt, r.UpdatedBy
+        if updatedAt.IsZero() </span><span class="cov9" title="9">{
                 updatedAt, updatedBy = createdAt, createdBy
         }</span>
-        <span class="cov10" title="4">return</span>
+        <span class="cov10" title="10">return</span>
 }
 
 // System is the resolved shape a caller needs to fill in a volume's system reference.
@@ -3590,29 +3592,29 @@ func (c *Client) Get(ctx context.Context, id string) (*System, error) <span clas
 // List resolves every live game system against game-systems-api's current versions - backs
 // catalog-api's /systems list route (the autocomplete/picker source for a volume's system
 // associations) as well as GetStats below.
-func (c *Client) List(ctx context.Context) ([]*System, error) <span class="cov1" title="1">{
+func (c *Client) List(ctx context.Context) ([]*System, error) <span class="cov6" title="4">{
         req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/systems", nil)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("game-systems: build list request: %w", err)
         }</span>
 
-        <span class="cov1" title="1">resp, err := c.http.Do(req)
+        <span class="cov6" title="4">resp, err := c.http.Do(req)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("game-systems: list request failed: %w", err)
         }</span>
-        <span class="cov1" title="1">defer func() </span><span class="cov1" title="1">{ _ = resp.Body.Close() }</span>()
+        <span class="cov6" title="4">defer func() </span><span class="cov6" title="4">{ _ = resp.Body.Close() }</span>()
 
-        <span class="cov1" title="1">if resp.StatusCode != http.StatusOK </span><span class="cov0" title="0">{
+        <span class="cov6" title="4">if resp.StatusCode != http.StatusOK </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("game-systems: unexpected status %d from list", resp.StatusCode)
         }</span>
 
-        <span class="cov1" title="1">var all []gameSystemResponse
-        if err := json.NewDecoder(resp.Body).Decode(&amp;all); err != nil </span><span class="cov0" title="0">{
+        <span class="cov6" title="4">all, err := decodeSystemList(resp.Body)
+        if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("game-systems: decode list response: %w", err)
         }</span>
 
-        <span class="cov1" title="1">systems := make([]*System, len(all))
-        for i, gs := range all </span><span class="cov5" title="2">{
+        <span class="cov6" title="4">systems := make([]*System, len(all))
+        for i, gs := range all </span><span class="cov9" title="8">{
                 createdAt, updatedAt, createdBy, updatedBy := gs.audit()
                 systems[i] = &amp;System{
                         ID: gs.RecordID, Name: gs.Name, Edition: gs.Edition, Notes: gs.Notes,
@@ -3620,7 +3622,35 @@ func (c *Client) List(ctx context.Context) ([]*System, error) <span class="cov1"
                         CreatedBy: createdBy, CreatedAt: createdAt, UpdatedBy: updatedBy, UpdatedAt: updatedAt,
                 }
         }</span>
-        <span class="cov1" title="1">return systems, nil</span>
+        <span class="cov6" title="4">return systems, nil</span>
+}
+
+// decodeSystemList reads GET /systems, tolerating both game-systems-api's historical bare JSON
+// array and its current { "systems": [...], "total": N, ... } envelope (added in
+// game-systems-api v0.7.0). The leading non-whitespace byte disambiguates: '[' is the old
+// array, anything else is decoded as the envelope.
+func decodeSystemList(r io.Reader) ([]gameSystemResponse, error) <span class="cov6" title="4">{
+        raw, err := io.ReadAll(r)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov6" title="4">trimmed := bytes.TrimLeft(raw, " \t\r\n")
+
+        if len(trimmed) &gt; 0 &amp;&amp; trimmed[0] == '[' </span><span class="cov3" title="2">{
+                var arr []gameSystemResponse
+                if err := json.Unmarshal(raw, &amp;arr); err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov3" title="2">return arr, nil</span>
+        }
+
+        <span class="cov3" title="2">var env struct {
+                Systems []gameSystemResponse `json:"systems"`
+        }
+        if err := json.Unmarshal(raw, &amp;env); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov3" title="2">return env.Systems, nil</span>
 }
 
 // Stats is the catalog-landing-page-summary card game-systems-api backs: a live-record count
@@ -3642,8 +3672,8 @@ func (c *Client) GetStats(ctx context.Context) (*Stats, error) <span class="cov1
         }</span>
 
         <span class="cov1" title="1">stats := &amp;Stats{Count: len(systems)}
-        for _, s := range systems </span><span class="cov5" title="2">{
-                if stats.LastUpdated == nil || s.UpdatedAt.After(*stats.LastUpdated) </span><span class="cov5" title="2">{
+        for _, s := range systems </span><span class="cov3" title="2">{
+                if stats.LastUpdated == nil || s.UpdatedAt.After(*stats.LastUpdated) </span><span class="cov3" title="2">{
                         updatedAt := s.UpdatedAt
                         stats.LastUpdated = &amp;updatedAt
                         stats.MostRecentID = s.ID
@@ -3656,12 +3686,12 @@ func (c *Client) GetStats(ctx context.Context) (*Stats, error) <span class="cov1
 func toTagVOs(tags []struct {
         Name  string `json:"name"`
         Value string `json:"value"`
-}) []modelcore.TagVO <span class="cov5" title="2">{
+}) []modelcore.TagVO <span class="cov9" title="8">{
         out := make([]modelcore.TagVO, 0, len(tags))
         for _, t := range tags </span><span class="cov0" title="0">{
                 out = append(out, modelcore.TagVO{Name: t.Name, Value: t.Value})
         }</span>
-        <span class="cov5" title="2">return out</span>
+        <span class="cov9" title="8">return out</span>
 }
 </pre>
 		
