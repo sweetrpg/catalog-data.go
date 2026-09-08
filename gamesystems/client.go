@@ -5,9 +5,11 @@
 package gamesystems
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -140,8 +142,8 @@ func (c *Client) List(ctx context.Context) ([]*System, error) {
 		return nil, fmt.Errorf("game-systems: unexpected status %d from list", resp.StatusCode)
 	}
 
-	var all []gameSystemResponse
-	if err := json.NewDecoder(resp.Body).Decode(&all); err != nil {
+	all, err := decodeSystemList(resp.Body)
+	if err != nil {
 		return nil, fmt.Errorf("game-systems: decode list response: %w", err)
 	}
 
@@ -155,6 +157,34 @@ func (c *Client) List(ctx context.Context) ([]*System, error) {
 		}
 	}
 	return systems, nil
+}
+
+// decodeSystemList reads GET /systems, tolerating both game-systems-api's historical bare JSON
+// array and its current { "systems": [...], "total": N, ... } envelope (added in
+// game-systems-api v0.7.0). The leading non-whitespace byte disambiguates: '[' is the old
+// array, anything else is decoded as the envelope.
+func decodeSystemList(r io.Reader) ([]gameSystemResponse, error) {
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	trimmed := bytes.TrimLeft(raw, " \t\r\n")
+
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		var arr []gameSystemResponse
+		if err := json.Unmarshal(raw, &arr); err != nil {
+			return nil, err
+		}
+		return arr, nil
+	}
+
+	var env struct {
+		Systems []gameSystemResponse `json:"systems"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, err
+	}
+	return env.Systems, nil
 }
 
 // Stats is the catalog-landing-page-summary card game-systems-api backs: a live-record count
