@@ -391,7 +391,12 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 	span := tracing.BuildSpanWithParams(c, "volumes", "db-get-volumes", params)
 	defer span.End()
 
+	// A `q` filter param is a browse-page multi-field search: a case-insensitive contains match
+	// ORed across a volume's title, description, and tag values (design.md's "Multi-field
+	// substring search" decision), rather than a literal `q` field match.
+	term, params := extractSearchTerm(params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
+	filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
 	if len(sort) == 0 {
 		// Without an explicit sort, Mongo returns natural (insertion) order - stable for an

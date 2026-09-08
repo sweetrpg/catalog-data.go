@@ -11,8 +11,6 @@ import (
 	modelcore "github.com/sweetrpg/model-core.go/models"
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
-	"github.com/sweetrpg/mongodb.go/database"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
@@ -30,6 +28,7 @@ var personVersioning = entityVersioningConfig[models.PersonVersion]{
 	setVersion:        func(v *models.PersonVersion, n int) { v.Version = n },
 	recordID:          func(v *models.PersonVersion) string { return v.RecordID },
 	displayName:       func(v *models.PersonVersion) string { return v.Name },
+	searchFields:      []string{"name"},
 	fields: map[string]entityFieldAccessor[models.PersonVersion]{
 		"name":       {get: func(v *models.PersonVersion) any { return v.Name }, set: func(v *models.PersonVersion, val any) { v.Name = val.(string) }},
 		"notes":      {get: func(v *models.PersonVersion) any { return v.Notes }, set: func(v *models.PersonVersion, val any) { v.Notes = val.(string) }},
@@ -187,22 +186,13 @@ func CountSubmittedPersonVersionsBySubmitter(c context.Context, submittedBy stri
 
 // QueryPersons lists the current (live) version of every person matching params.
 func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) {
-	filter, sort, projection := apiutil.ConvertQueryParams(params)
-	filter = append(filter, bson.E{Key: "deleted_at", Value: nil})
-	metas, err := database.Query[models.EntityMeta](personMetaCollection, filter, sort, projection, params.Start, params.Limit)
+	rows, err := personVersioning.query(c, params)
 	if err != nil {
 		return nil, err
 	}
-	vos := make([]*vo.PersonVO, 0, len(metas))
-	for _, meta := range metas {
-		version, err := personVersioning.getVersion(c, meta.ID, meta.CurrentVersion)
-		if err != nil {
-			return nil, err
-		}
-		if version == nil {
-			continue
-		}
-		vos = append(vos, flattenPerson(meta, version))
+	vos := make([]*vo.PersonVO, 0, len(rows))
+	for _, r := range rows {
+		vos = append(vos, flattenPerson(r.Meta, r.Version))
 	}
 	return vos, nil
 }
