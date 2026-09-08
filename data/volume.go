@@ -437,6 +437,25 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 	return vos, nil
 }
 
+// CountVolumes returns how many live volume versions match params' filter - the same `q` $or
+// expansion (title/description/tag values) and any `filter[...][contains]` clauses QueryVolumes
+// applies, plus `state: live` - via a driver CountDocuments. No documents, no sort, no page
+// window. Backs catalog-api's list-response `meta.total`. Like GetCatalogStats it counts on the
+// version collection without joining volume meta, so a volume whose meta is soft-deleted but
+// whose live version still exists is counted (QueryVolumes' per-row meta check would drop it);
+// acceptable for a browse-pager total, matching the stats path's existing behavior.
+func CountVolumes(c context.Context, params apiutil.QueryParams) (int64, error) {
+	span := tracing.BuildSpanWithParams(c, "volumes", "db-count-volumes", params)
+	defer span.End()
+
+	term, rest := extractSearchTerm(params)
+	filter, _, _ := apiutil.ConvertQueryParams(rest)
+	filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
+	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+
+	return database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
+}
+
 // CatalogStats is a small aggregate over the live volume set - the total count and the most
 // recent submission time - for callers that need a catalog-wide summary (e.g. a landing page)
 // without paginating through every volume themselves.

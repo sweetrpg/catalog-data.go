@@ -149,6 +149,87 @@ func (suite *QueryPushdownTestSuite) TestSearchIndexesExist() {
 	assert.True(suite.T(), suite.indexExists(licenseVersionCollection, "title_1"))
 }
 
+// 3b.1: Count<Entity> equals the length of an unpaginated Query<Entity> for the same filter,
+// both unfiltered and filtered.
+func (suite *QueryPushdownTestSuite) TestCountMatchesUnpaginatedQueryLength() {
+	ctx := suite.T().Context()
+	const big = 100000
+
+	assertCount := func(name string, count int64, err error, queryLen int) {
+		assert.NoError(suite.T(), err, name)
+		assert.EqualValues(suite.T(), queryLen, count, "%s: count must equal unpaginated Query length", name)
+	}
+
+	// Volumes: two carry the marker in the description, one does not.
+	_, err := AddVolume(ctx, &vo.VolumeVO{Title: "V A", Description: "has cntmk1 marker"})
+	assert.NoError(suite.T(), err)
+	_, err = AddVolume(ctx, &vo.VolumeVO{Title: "cntmk1 in title too", Description: "x"})
+	assert.NoError(suite.T(), err)
+	_, err = AddVolume(ctx, &vo.VolumeVO{Title: "V C", Description: "unrelated"})
+	assert.NoError(suite.T(), err)
+
+	allVols, err := QueryVolumes(ctx, apiutil.QueryParams{Limit: big})
+	assert.NoError(suite.T(), err)
+	cVol, err := CountVolumes(ctx, apiutil.QueryParams{Limit: big})
+	assertCount("volumes unfiltered", cVol, err, len(allVols))
+
+	qVol := apiutil.QueryParams{Limit: big, Filter: []apiutil.Filter{{Field: "q", Value: []string{"cntmk1"}}}}
+	fVols, err := QueryVolumes(ctx, qVol)
+	assert.NoError(suite.T(), err)
+	cVolF, err := CountVolumes(ctx, qVol)
+	assertCount("volumes q=cntmk1", cVolF, err, len(fVols))
+
+	// Engine entities.
+	seedPub := func(n string) { _, e := AddPublisher(ctx, &vo.PublisherVO{Name: n}); assert.NoError(suite.T(), e) }
+	seedPub("Cntmk2 One")
+	seedPub("Cntmk2 Two")
+	seedPub("Elsewhere")
+	allPub, err := QueryPublishers(ctx, apiutil.QueryParams{Limit: big})
+	assert.NoError(suite.T(), err)
+	cPub, err := CountPublishers(ctx, apiutil.QueryParams{Limit: big})
+	assertCount("publishers unfiltered", cPub, err, len(allPub))
+	fPub, err := QueryPublishers(ctx, apiutil.QueryParams{Limit: big, Filter: regexFilter("name", "cntmk2")})
+	assert.NoError(suite.T(), err)
+	cPubF, err := CountPublishers(ctx, apiutil.QueryParams{Limit: big, Filter: regexFilter("name", "cntmk2")})
+	assertCount("publishers name~cntmk2", cPubF, err, len(fPub))
+
+	seedStu := func(n string) { _, e := AddStudio(ctx, &vo.StudioVO{Name: n}); assert.NoError(suite.T(), e) }
+	seedStu("Cntmk3 One")
+	seedStu("Other Studio")
+	allStu, err := QueryStudios(ctx, apiutil.QueryParams{Limit: big})
+	assert.NoError(suite.T(), err)
+	cStu, err := CountStudios(ctx, apiutil.QueryParams{Limit: big})
+	assertCount("studios unfiltered", cStu, err, len(allStu))
+	fStu, err := QueryStudios(ctx, apiutil.QueryParams{Limit: big, Filter: regexFilter("name", "cntmk3")})
+	assert.NoError(suite.T(), err)
+	cStuF, err := CountStudios(ctx, apiutil.QueryParams{Limit: big, Filter: regexFilter("name", "cntmk3")})
+	assertCount("studios name~cntmk3", cStuF, err, len(fStu))
+
+	seedPer := func(n string) { _, e := AddPerson(ctx, &vo.PersonVO{Name: n}); assert.NoError(suite.T(), e) }
+	seedPer("Cntmk4 One")
+	seedPer("Nobody")
+	allPer, err := QueryPersons(ctx, apiutil.QueryParams{Limit: big})
+	assert.NoError(suite.T(), err)
+	cPer, err := CountPersons(ctx, apiutil.QueryParams{Limit: big})
+	assertCount("persons unfiltered", cPer, err, len(allPer))
+	fPer, err := QueryPersons(ctx, apiutil.QueryParams{Limit: big, Filter: regexFilter("name", "cntmk4")})
+	assert.NoError(suite.T(), err)
+	cPerF, err := CountPersons(ctx, apiutil.QueryParams{Limit: big, Filter: regexFilter("name", "cntmk4")})
+	assertCount("persons name~cntmk4", cPerF, err, len(fPer))
+
+	seedLic := func(t string) { _, e := AddLicense(ctx, &vo.LicenseVO{Title: t}); assert.NoError(suite.T(), e) }
+	seedLic("Cntmk5 One")
+	seedLic("Plain License")
+	allLic, err := QueryLicenses(ctx, apiutil.QueryParams{Limit: big})
+	assert.NoError(suite.T(), err)
+	cLic, err := CountLicenses(ctx, apiutil.QueryParams{Limit: big})
+	assertCount("licenses unfiltered", cLic, err, len(allLic))
+	fLic, err := QueryLicenses(ctx, apiutil.QueryParams{Limit: big, Filter: regexFilter("title", "cntmk5")})
+	assert.NoError(suite.T(), err)
+	cLicF, err := CountLicenses(ctx, apiutil.QueryParams{Limit: big, Filter: regexFilter("title", "cntmk5")})
+	assertCount("licenses title~cntmk5", cLicF, err, len(fLic))
+}
+
 func TestQueryPushdownTestSuite(t *testing.T) {
 	suite.Run(t, new(QueryPushdownTestSuite))
 }

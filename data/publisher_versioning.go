@@ -205,6 +205,12 @@ func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.Publi
 	return vos, nil
 }
 
+// CountPublishers returns how many live publishers match params' filter, without fetching them -
+// backs catalog-api's list-response meta.total. Same filter as QueryPublishers.
+func CountPublishers(c context.Context, params apiutil.QueryParams) (int64, error) {
+	return publisherVersioning.count(c, params)
+}
+
 // SearchPublishers finds live publishers whose name contains query (case-insensitive), scanning
 // the full collection - see data.SearchPersons for why this scans in memory rather than pushing
 // the match down to Mongo.

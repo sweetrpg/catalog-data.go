@@ -146,6 +146,21 @@ func (cfg entityVersioningConfig[T]) query(c context.Context, params apiutil.Que
 	return out, nil
 }
 
+// count returns how many live version records match params' filter - the same `q` $or
+// expansion over cfg.searchFields and any `filter[...][contains]` clauses query() applies, plus
+// `state: live` - via a driver CountDocuments. No documents, no sort, no page window. Backs
+// catalog-api's list-response `meta.total`. Like stats() it counts on the version collection
+// without joining meta, so a record whose meta is soft-deleted but whose live version still
+// exists is counted (query()'s per-row meta check would drop it); acceptable for a browse-pager
+// total, matching stats()'s existing behavior.
+func (cfg entityVersioningConfig[T]) count(c context.Context, params apiutil.QueryParams) (int64, error) {
+	term, rest := extractSearchTerm(params)
+	filter, _, _ := apiutil.ConvertQueryParams(rest)
+	filter = appendSearchOr(filter, term, cfg.searchFields)
+	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+	return database.Db.Collection(cfg.versionCollection).CountDocuments(c, filter)
+}
+
 // TypeStats is one entity type's catalog-landing-page-summary card: a live-record count plus
 // the single most recently submitted live record, or zero-value/nil fields if the type has no
 // live records yet (see spec's "degrades gracefully for an empty entity type" requirement).
