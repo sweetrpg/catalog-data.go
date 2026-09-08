@@ -12,8 +12,6 @@ import (
 	modelcore "github.com/sweetrpg/model-core.go/models"
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
-	"github.com/sweetrpg/mongodb.go/database"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
@@ -31,6 +29,7 @@ var licenseVersioning = entityVersioningConfig[models.LicenseVersion]{
 	setVersion:        func(v *models.LicenseVersion, n int) { v.Version = n },
 	recordID:          func(v *models.LicenseVersion) string { return v.RecordID },
 	displayName:       func(v *models.LicenseVersion) string { return v.Title },
+	searchFields:      []string{"title"},
 	fields: map[string]entityFieldAccessor[models.LicenseVersion]{
 		"title":         {get: func(v *models.LicenseVersion) any { return v.Title }, set: func(v *models.LicenseVersion, val any) { v.Title = val.(string) }},
 		"short_title":   {get: func(v *models.LicenseVersion) any { return v.ShortTitle }, set: func(v *models.LicenseVersion, val any) { v.ShortTitle = val.(string) }},
@@ -201,22 +200,13 @@ func CountSubmittedLicenseVersionsBySubmitter(c context.Context, submittedBy str
 
 // QueryLicenses lists the current (live) version of every license matching params.
 func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) {
-	filter, sort, projection := apiutil.ConvertQueryParams(params)
-	filter = append(filter, bson.E{Key: "deleted_at", Value: nil})
-	metas, err := database.Query[models.EntityMeta](licenseMetaCollection, filter, sort, projection, params.Start, params.Limit)
+	rows, err := licenseVersioning.query(c, params)
 	if err != nil {
 		return nil, err
 	}
-	vos := make([]*vo.LicenseVO, 0, len(metas))
-	for _, meta := range metas {
-		version, err := licenseVersioning.getVersion(c, meta.ID, meta.CurrentVersion)
-		if err != nil {
-			return nil, err
-		}
-		if version == nil {
-			continue
-		}
-		vos = append(vos, flattenLicense(meta, version))
+	vos := make([]*vo.LicenseVO, 0, len(rows))
+	for _, r := range rows {
+		vos = append(vos, flattenLicense(r.Meta, r.Version))
 	}
 	return vos, nil
 }

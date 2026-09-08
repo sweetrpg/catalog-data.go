@@ -12,8 +12,6 @@ import (
 	modelcore "github.com/sweetrpg/model-core.go/models"
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
-	"github.com/sweetrpg/mongodb.go/database"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
@@ -31,6 +29,7 @@ var publisherVersioning = entityVersioningConfig[models.PublisherVersion]{
 	setVersion:        func(v *models.PublisherVersion, n int) { v.Version = n },
 	recordID:          func(v *models.PublisherVersion) string { return v.RecordID },
 	displayName:       func(v *models.PublisherVersion) string { return v.Name },
+	searchFields:      []string{"name"},
 	fields: map[string]entityFieldAccessor[models.PublisherVersion]{
 		"name":       {get: func(v *models.PublisherVersion) any { return v.Name }, set: func(v *models.PublisherVersion, val any) { v.Name = val.(string) }},
 		"address":    {get: func(v *models.PublisherVersion) any { return v.Address }, set: func(v *models.PublisherVersion, val any) { v.Address = val.(string) }},
@@ -192,24 +191,16 @@ func CountSubmittedPublisherVersionsBySubmitter(c context.Context, submittedBy s
 	return publisherVersioning.countSubmittedBySubmitter(c, submittedBy)
 }
 
-// QueryPublishers lists the current (live) version of every publisher matching params.
+// QueryPublishers lists the current (live) version of every publisher matching params, with
+// filter/sort/page (and a `q` name search) pushed down to the query layer.
 func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) {
-	filter, sort, projection := apiutil.ConvertQueryParams(params)
-	filter = append(filter, bson.E{Key: "deleted_at", Value: nil})
-	metas, err := database.Query[models.EntityMeta](publisherMetaCollection, filter, sort, projection, params.Start, params.Limit)
+	rows, err := publisherVersioning.query(c, params)
 	if err != nil {
 		return nil, err
 	}
-	vos := make([]*vo.PublisherVO, 0, len(metas))
-	for _, meta := range metas {
-		version, err := publisherVersioning.getVersion(c, meta.ID, meta.CurrentVersion)
-		if err != nil {
-			return nil, err
-		}
-		if version == nil {
-			continue
-		}
-		vos = append(vos, flattenPublisher(meta, version))
+	vos := make([]*vo.PublisherVO, 0, len(rows))
+	for _, r := range rows {
+		vos = append(vos, flattenPublisher(r.Meta, r.Version))
 	}
 	return vos, nil
 }

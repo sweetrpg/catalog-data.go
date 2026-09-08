@@ -12,8 +12,6 @@ import (
 	modelcore "github.com/sweetrpg/model-core.go/models"
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
 	modelcorevo "github.com/sweetrpg/model-core.go/vo"
-	"github.com/sweetrpg/mongodb.go/database"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
@@ -31,6 +29,7 @@ var studioVersioning = entityVersioningConfig[models.StudioVersion]{
 	setVersion:        func(v *models.StudioVersion, n int) { v.Version = n },
 	recordID:          func(v *models.StudioVersion) string { return v.RecordID },
 	displayName:       func(v *models.StudioVersion) string { return v.Name },
+	searchFields:      []string{"name"},
 	fields: map[string]entityFieldAccessor[models.StudioVersion]{
 		"name":       {get: func(v *models.StudioVersion) any { return v.Name }, set: func(v *models.StudioVersion, val any) { v.Name = val.(string) }},
 		"website":    {get: func(v *models.StudioVersion) any { return v.Website }, set: func(v *models.StudioVersion, val any) { v.Website = val.(url.URL) }},
@@ -189,22 +188,13 @@ func CountSubmittedStudioVersionsBySubmitter(c context.Context, submittedBy stri
 
 // QueryStudios lists the current (live) version of every studio matching params.
 func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) {
-	filter, sort, projection := apiutil.ConvertQueryParams(params)
-	filter = append(filter, bson.E{Key: "deleted_at", Value: nil})
-	metas, err := database.Query[models.EntityMeta](studioMetaCollection, filter, sort, projection, params.Start, params.Limit)
+	rows, err := studioVersioning.query(c, params)
 	if err != nil {
 		return nil, err
 	}
-	vos := make([]*vo.StudioVO, 0, len(metas))
-	for _, meta := range metas {
-		version, err := studioVersioning.getVersion(c, meta.ID, meta.CurrentVersion)
-		if err != nil {
-			return nil, err
-		}
-		if version == nil {
-			continue
-		}
-		vos = append(vos, flattenStudio(meta, version))
+	vos := make([]*vo.StudioVO, 0, len(rows))
+	for _, r := range rows {
+		vos = append(vos, flattenStudio(r.Meta, r.Version))
 	}
 	return vos, nil
 }

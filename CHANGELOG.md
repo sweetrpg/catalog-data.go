@@ -1,4 +1,11 @@
 
+## 0.19.0 - 2026-09-08
+
+### Added
+- Push list filter/sort/search down to the query layer
+
+
+
 ## 0.18.1 - 2026-09-08
 
 ### Fixed
