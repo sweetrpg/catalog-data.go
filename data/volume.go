@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/sweetrpg/api-core.go/tracing"
@@ -436,32 +435,6 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 
 	logging.Logger.Debug("returning volume value objects", "vos", vos)
 	return vos, nil
-}
-
-// volumeSearchScanLimit is far smaller than the shared searchScanLimit (5000, used by
-// SearchPublishers/SearchPersons/etc.) - QueryVolumes resolves each volume's full relation set
-// (systems, publishers, studios, licenses), so scanning 5000 volumes measured at 6-7s against a
-// warm dev catalog, blowing past game-room-web's 5s request timeout. 500 keeps this well under
-// that budget; raise only alongside a real fix (pushing the title match down to a Mongo query
-// instead of an in-memory scan over fully-hydrated volumes).
-const volumeSearchScanLimit = 500
-
-// SearchVolumes finds live volumes whose title contains query (case-insensitive), scanning up to
-// volumeSearchScanLimit volumes - see the comment there for why this doesn't use the shared
-// searchScanLimit other entities' Search* functions use.
-func SearchVolumes(c context.Context, query string) ([]*vo.VolumeVO, error) {
-	all, err := QueryVolumes(c, apiutil.QueryParams{Limit: volumeSearchScanLimit})
-	if err != nil {
-		return nil, err
-	}
-	needle := strings.ToLower(query)
-	matches := make([]*vo.VolumeVO, 0, len(all))
-	for _, v := range all {
-		if strings.Contains(strings.ToLower(v.Title), needle) {
-			matches = append(matches, v)
-		}
-	}
-	return matches, nil
 }
 
 // CatalogStats is a small aggregate over the live volume set - the total count and the most
