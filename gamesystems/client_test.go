@@ -34,6 +34,50 @@ func TestGetStatsPicksMostRecent(t *testing.T) {
 	}
 }
 
+// game-systems-api v0.7.0 changed GET /systems from a bare array to a
+// { "systems": [...], "total": N, "page": p, "per_page": pp } envelope. The client must accept
+// both so a catalog-api running against either game-systems-api version keeps working.
+func TestListAcceptsEnvelopeAndBareArray(t *testing.T) {
+	older := time.Now().Add(-time.Hour)
+	newer := time.Now()
+	rows := []gameSystemResponse{
+		{RecordID: "1", Name: "D&D", SubmittedAt: older},
+		{RecordID: "2", Name: "Pathfinder", SubmittedAt: newer},
+	}
+
+	cases := map[string]func(http.ResponseWriter){
+		"bare array": func(w http.ResponseWriter) {
+			_ = json.NewEncoder(w).Encode(rows)
+		},
+		"envelope": func(w http.ResponseWriter) {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"systems": rows, "total": 2, "page": 1, "per_page": 24,
+			})
+		},
+		"envelope with leading whitespace": func(w http.ResponseWriter) {
+			body, _ := json.Marshal(map[string]any{"systems": rows, "total": 2})
+			_, _ = w.Write(append([]byte("  \n"), body...))
+		},
+	}
+
+	for name, write := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				write(w)
+			}))
+			defer srv.Close()
+
+			systems, err := NewClient(srv.URL).List(context.Background())
+			if err != nil {
+				t.Fatalf("List() error = %v", err)
+			}
+			if len(systems) != 2 || systems[0].ID != "1" || systems[1].Name != "Pathfinder" {
+				t.Fatalf("List() = %+v, want the two seeded systems", systems)
+			}
+		})
+	}
+}
+
 func TestGetNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
