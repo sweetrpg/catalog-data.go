@@ -52,6 +52,17 @@ func EnsureVolumeVersioningIndexes(ctx context.Context) error {
 		return fmt.Errorf("volumes: create state+submitted_at index: %w", err)
 	}
 
+	// One index per field QueryVolumes' `q` search ORs over. An unanchored contains $regex
+	// can't use these efficiently - see design.md's "Index every field a contains filter can
+	// target" (indexed anyway so an exact/anchored filter on the same field stays cheap).
+	for _, field := range []string{"title", "description", "tags.value"} {
+		if _, err := database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys: bson.D{{Key: field, Value: 1}},
+		}); err != nil {
+			return fmt.Errorf("volumes: create %s index: %w", field, err)
+		}
+	}
+
 	return nil
 }
 

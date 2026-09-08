@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	apiutil "github.com/sweetrpg/api-core.go/util"
 	"github.com/sweetrpg/catalog-objects.go/models"
 	modelcore "github.com/sweetrpg/model-core.go/models"
 	"github.com/sweetrpg/mongodb.go/database"
@@ -16,6 +17,45 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// searchTermField is the reserved filter key for a multi-field substring search. A
+// params.Filter entry with this Field is expanded to a case-insensitive $or across the
+// entity's search fields (see design.md's "Multi-field substring search" decision) rather than
+// passed through to ConvertQueryParams as a literal field match.
+const searchTermField = "q"
+
+// extractSearchTerm pulls a searchTermField filter out of params (returning its first value and
+// a copy of params with that entry removed), so "q" never reaches ConvertQueryParams as a
+// literal field. The returned QueryParams shares no backing array with the caller's.
+func extractSearchTerm(params apiutil.QueryParams) (string, apiutil.QueryParams) {
+	var term string
+	kept := make([]apiutil.Filter, 0, len(params.Filter))
+	for _, f := range params.Filter {
+		if f.Field == searchTermField {
+			if len(f.Value) > 0 {
+				term = f.Value[0]
+			}
+			continue
+		}
+		kept = append(kept, f)
+	}
+	params.Filter = kept
+	return term, params
+}
+
+// appendSearchOr adds a case-insensitive "contains" $or across fields for a non-empty term.
+// Each clause is the same { $regex, $options: "i" } shape api-core.go's contains operator
+// produces, so a per-field filter[x][contains]=y and a multi-field q stay consistent.
+func appendSearchOr(filter bson.D, term string, fields []string) bson.D {
+	if term == "" || len(fields) == 0 {
+		return filter
+	}
+	or := make(bson.A, 0, len(fields))
+	for _, f := range fields {
+		or = append(or, bson.D{{Key: f, Value: bson.D{{Key: "$regex", Value: term}, {Key: "$options", Value: "i"}}}})
+	}
+	return append(filter, bson.E{Key: "$or", Value: or})
+}
 
 // parseWebsite best-effort parses a VO's plain-string website into the url.URL the models layer
 // still stores (Mongo bson round-trips url.URL fine - only the JSON:API wire format needed the
@@ -56,9 +96,54 @@ type entityVersioningConfig[T any] struct {
 	// already exposes (State, SubmittedAt).
 	recordID    func(*T) string
 	displayName func(*T) string
+	// searchFields are the version-document bson fields a browse-page substring search covers,
+	// in preference order. searchFields[0] is also this entity's default list sort. A `q` filter
+	// param ORs a case-insensitive contains match across all of them; each is also indexed
+	// (ensureIndexes) so an exact or anchored filter on the same field stays cheap.
+	searchFields []string
 	// fields are the substantive fields a submission can change and a review can selectively
 	// accept - everything on T except its version-lifecycle bookkeeping.
 	fields map[string]entityFieldAccessor[T]
+}
+
+// metaVersion pairs a live version record with its non-deleted meta record - what query returns
+// for each match so the caller can flatten both into the entity's VO.
+type metaVersion[T any] struct {
+	Meta    *models.EntityMeta
+	Version *T
+}
+
+// query lists the current (live) version of every record matching params, excluding
+// soft-deleted records. Mirrors QueryVolumes: the filter, sort, and page window push down to
+// the version collection, then each row's meta is joined to drop soft-deleted records. A `q`
+// filter param becomes a case-insensitive $or across cfg.searchFields; with no explicit sort,
+// results order by searchFields[0].
+func (cfg entityVersioningConfig[T]) query(c context.Context, params apiutil.QueryParams) ([]metaVersion[T], error) {
+	term, rest := extractSearchTerm(params)
+	filter, sortOrder, projection := apiutil.ConvertQueryParams(rest)
+	filter = appendSearchOr(filter, term, cfg.searchFields)
+	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+	if len(sortOrder) == 0 && len(cfg.searchFields) > 0 {
+		sortOrder = bson.D{{Key: cfg.searchFields[0], Value: 1}}
+	}
+
+	versions, err := database.Query[T](cfg.versionCollection, filter, sortOrder, projection, params.Start, params.Limit)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]metaVersion[T], 0, len(versions))
+	for _, v := range versions {
+		meta, err := cfg.getMeta(c, cfg.recordID(v))
+		if err != nil {
+			return nil, err
+		}
+		if meta == nil || meta.DeletedAt != nil {
+			continue
+		}
+		out = append(out, metaVersion[T]{Meta: meta, Version: v})
+	}
+	return out, nil
 }
 
 // TypeStats is one entity type's catalog-landing-page-summary card: a live-record count plus
@@ -129,6 +214,16 @@ func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("%s: create state+submitted_at index: %w", cfg.typeName, err)
+	}
+	// One index per search field so an exact/anchored filter (or the default searchFields[0]
+	// sort) on it is index-backed. An unanchored contains $regex can't use these efficiently -
+	// tracked as a follow-up (design.md's "Index every field a contains filter can target").
+	for _, field := range cfg.searchFields {
+		if _, err := database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
+			Keys: bson.D{{Key: field, Value: 1}},
+		}); err != nil {
+			return fmt.Errorf("%s: create %s index: %w", cfg.typeName, field, err)
+		}
 	}
 	return nil
 }
