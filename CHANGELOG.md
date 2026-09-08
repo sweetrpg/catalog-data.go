@@ -1,4 +1,11 @@
 
+## 0.18.1 - 2026-09-08
+
+### Fixed
+- Accept game-systems-api's /systems envelope response
+
+
+
 ## 0.18.0 - 2026-09-06
 
 ### Added
