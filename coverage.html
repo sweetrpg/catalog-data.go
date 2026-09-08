@@ -71,7 +71,7 @@
 				
 				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_client.go (0.0%)</option>
 				
-				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (71.6%)</option>
+				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (74.6%)</option>
 				
 				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
 				
@@ -2229,7 +2229,6 @@ func GetSystemStats(c context.Context) (*TypeStats, error) <span class="cov0" ti
 import (
         "context"
         "fmt"
-        "strings"
         "time"
 
         "github.com/sweetrpg/api-core.go/tracing"
@@ -2662,32 +2661,6 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 
         <span class="cov4" title="10">logging.Logger.Debug("returning volume value objects", "vos", vos)
         return vos, nil</span>
-}
-
-// volumeSearchScanLimit is far smaller than the shared searchScanLimit (5000, used by
-// SearchPublishers/SearchPersons/etc.) - QueryVolumes resolves each volume's full relation set
-// (systems, publishers, studios, licenses), so scanning 5000 volumes measured at 6-7s against a
-// warm dev catalog, blowing past game-room-web's 5s request timeout. 500 keeps this well under
-// that budget; raise only alongside a real fix (pushing the title match down to a Mongo query
-// instead of an in-memory scan over fully-hydrated volumes).
-const volumeSearchScanLimit = 500
-
-// SearchVolumes finds live volumes whose title contains query (case-insensitive), scanning up to
-// volumeSearchScanLimit volumes - see the comment there for why this doesn't use the shared
-// searchScanLimit other entities' Search* functions use.
-func SearchVolumes(c context.Context, query string) ([]*vo.VolumeVO, error) <span class="cov0" title="0">{
-        all, err := QueryVolumes(c, apiutil.QueryParams{Limit: volumeSearchScanLimit})
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov0" title="0">needle := strings.ToLower(query)
-        matches := make([]*vo.VolumeVO, 0, len(all))
-        for _, v := range all </span><span class="cov0" title="0">{
-                if strings.Contains(strings.ToLower(v.Title), needle) </span><span class="cov0" title="0">{
-                        matches = append(matches, v)
-                }</span>
-        }
-        <span class="cov0" title="0">return matches, nil</span>
 }
 
 // CatalogStats is a small aggregate over the live volume set - the total count and the most
