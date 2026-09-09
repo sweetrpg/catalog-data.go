@@ -197,6 +197,12 @@ func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO
 	return vos, nil
 }
 
+// CountPersons returns how many live persons match params' filter, without fetching them -
+// backs catalog-api's list-response meta.total. Same filter as QueryPersons.
+func CountPersons(c context.Context, params apiutil.QueryParams) (int64, error) {
+	return personVersioning.count(c, params)
+}
+
 // searchScanLimit bounds how many live persons SearchPersons scans in memory - name isn't a
 // field on personMetaCollection (it only lives on the version document QueryPersons resolves
 // per-meta), so there's no index-backed way to push a substring match down to Mongo without a
