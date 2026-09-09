@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -65,14 +66,17 @@ func normalizeSort(sortOrder bson.D) bson.D {
 
 // appendSearchOr adds a case-insensitive "contains" $or across fields for a non-empty term.
 // Each clause is the same { $regex, $options: "i" } shape api-core.go's contains operator
-// produces, so a per-field filter[x][contains]=y and a multi-field q stay consistent.
+// produces, so a per-field filter[x][contains]=y and a multi-field q stay consistent - including
+// regexp.QuoteMeta on the term, so it matches literally and a crafted value can't drive
+// catastrophic $regex backtracking on the database.
 func appendSearchOr(filter bson.D, term string, fields []string) bson.D {
 	if term == "" || len(fields) == 0 {
 		return filter
 	}
+	pattern := regexp.QuoteMeta(term)
 	or := make(bson.A, 0, len(fields))
 	for _, f := range fields {
-		or = append(or, bson.D{{Key: f, Value: bson.D{{Key: "$regex", Value: term}, {Key: "$options", Value: "i"}}}})
+		or = append(or, bson.D{{Key: f, Value: bson.D{{Key: "$regex", Value: pattern}, {Key: "$options", Value: "i"}}}})
 	}
 	return append(filter, bson.E{Key: "$or", Value: or})
 }

@@ -79,6 +79,30 @@ func (suite *QueryPushdownTestSuite) TestQueryVolumesMultiFieldSearchMatchesDesc
 	// a description-only hit is not missed, which the Contains above proves.
 }
 
+// A `q` term with regex metacharacters is matched literally (QuoteMeta in appendSearchOr), not
+// interpreted as a pattern - so a crafted value can't drive $regex backtracking, and the term
+// finds the record that actually contains that punctuation.
+func (suite *QueryPushdownTestSuite) TestQueryVolumesSearchTermIsLiteralNotRegex() {
+	ctx := suite.T().Context()
+	hit, err := AddVolume(ctx, &vo.VolumeVO{Title: "Manual qp(a+)zz7lit Edition", Description: "x"})
+	assert.NoError(suite.T(), err)
+	_, err = AddVolume(ctx, &vo.VolumeVO{Title: "Manual qpaaaazz7lit Edition", Description: "x"})
+	assert.NoError(suite.T(), err)
+
+	results, err := QueryVolumes(ctx, apiutil.QueryParams{
+		Limit:  200,
+		Filter: []apiutil.Filter{{Field: "q", Value: []string{"qp(a+)zz7lit"}}},
+	})
+	assert.NoError(suite.T(), err)
+
+	var ids []string
+	for _, r := range results {
+		ids = append(ids, r.ID)
+	}
+	assert.Equal(suite.T(), []string{*hit}, ids,
+		"only the literal '(a+)' title matches - not the 'aaaa' one, and no regex error")
+}
+
 // 2.3: name-`contains` filter returns only matching records - one per engine entity type.
 func (suite *QueryPushdownTestSuite) TestQueryPublishersNameContains() {
 	ctx := suite.T().Context()

@@ -15,6 +15,8 @@ github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek
 github.com/golang/protobuf v1.5.4/go.mod h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6rSs7xps=
 github.com/golang/snappy v1.0.0 h1:Oy607GVXHs7RtbggtPBnr2RmDArIsAefDwvrdWvRhGs=
 github.com/golang/snappy v1.0.0/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=
+github.com/gomodule/redigo v1.9.3 h1:dNPSXeXv6HCq2jdyWfjgmhBdqnR6PRO3m/G05nvpPC8=
+github.com/gomodule/redigo v1.9.3/go.mod h1:KsU3hiK/Ay8U42qpaJk+kuNa3C+spxapWpM+ywhcgtw=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
@@ -27,8 +29,8 @@ github.com/montanaflynn/stats v0.7.1 h1:etflOAAHORrCC44V+aR6Ftzort912ZU+YLiSTuV8
 github.com/montanaflynn/stats v0.7.1/go.mod h1:etXPPgVO6n31NxCd9KQUMvCM+ve0ruNzt6R8Bnaayow=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
-github.com/sweetrpg/api-core.go v0.2.0 h1:iCXJuIxtdQOV8p6JbYOitntbOMmQEpJy7Gh6HkQdF6M=
-github.com/sweetrpg/api-core.go v0.2.0/go.mod h1:L27iRQqlnbAbqymjqGeSIcEJHnBKkL8w5nhq0TVa4Ow=
+github.com/sweetrpg/api-core.go v0.3.1 h1:Fa0dzFjoohTGLt182pO55kksScGNKi6nFHRij/68GTw=
+github.com/sweetrpg/api-core.go v0.3.1/go.mod h1:Li4x24U0q67096dbvOm1Fuq/xOMG1elcgiuJAV8WTJA=
 github.com/sweetrpg/catalog-objects.go v0.6.0 h1:1yWzmcfOrMWF8GC4lYsq6165FNeR4ZYY+bmGlk1xuzc=
 github.com/sweetrpg/catalog-objects.go v0.6.0/go.mod h1:qwB2oluVsq8WSdnZHQTAZ5Z3ZeYrLkimVZPT/jilDs4=
 github.com/sweetrpg/common.go v0.0.16 h1:XT8PwUXz0BOMIITXLjw3G6rEjjRUEs0Xs4+R9o2fVBk=
