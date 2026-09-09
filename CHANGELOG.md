@@ -1,4 +1,11 @@
 
+## 0.20.1 - 2026-09-09
+
+### Fixed
+- Escape the q search term before building its $regex
+
+
+
 ## 0.20.0 - 2026-09-09
 
 ### Added
