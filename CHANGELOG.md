@@ -1,4 +1,19 @@
 
+## 0.20.0 - 2026-09-09
+
+### Added
+- Add query-layer Count<Entity> for list-response totals
+
+
+### Changed
+- Remove unused SearchVolumes / volumeSearchScanLimit
+
+
+### Fixed
+- Make sort=-field sort descending
+
+
+
 ## 0.19.0 - 2026-09-08
 
 ### Added
