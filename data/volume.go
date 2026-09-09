@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/sweetrpg/api-core.go/tracing"
@@ -398,6 +397,7 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+	sort = normalizeSort(sort)
 	if len(sort) == 0 {
 		// Without an explicit sort, Mongo returns natural (insertion) order - stable for an
 		// untouched record, but an edit re-inserts that record's new live version, so it jumps
@@ -438,30 +438,23 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 	return vos, nil
 }
 
-// volumeSearchScanLimit is far smaller than the shared searchScanLimit (5000, used by
-// SearchPublishers/SearchPersons/etc.) - QueryVolumes resolves each volume's full relation set
-// (systems, publishers, studios, licenses), so scanning 5000 volumes measured at 6-7s against a
-// warm dev catalog, blowing past game-room-web's 5s request timeout. 500 keeps this well under
-// that budget; raise only alongside a real fix (pushing the title match down to a Mongo query
-// instead of an in-memory scan over fully-hydrated volumes).
-const volumeSearchScanLimit = 500
+// CountVolumes returns how many live volume versions match params' filter - the same `q` $or
+// expansion (title/description/tag values) and any `filter[...][contains]` clauses QueryVolumes
+// applies, plus `state: live` - via a driver CountDocuments. No documents, no sort, no page
+// window. Backs catalog-api's list-response `meta.total`. Like GetCatalogStats it counts on the
+// version collection without joining volume meta, so a volume whose meta is soft-deleted but
+// whose live version still exists is counted (QueryVolumes' per-row meta check would drop it);
+// acceptable for a browse-pager total, matching the stats path's existing behavior.
+func CountVolumes(c context.Context, params apiutil.QueryParams) (int64, error) {
+	span := tracing.BuildSpanWithParams(c, "volumes", "db-count-volumes", params)
+	defer span.End()
 
-// SearchVolumes finds live volumes whose title contains query (case-insensitive), scanning up to
-// volumeSearchScanLimit volumes - see the comment there for why this doesn't use the shared
-// searchScanLimit other entities' Search* functions use.
-func SearchVolumes(c context.Context, query string) ([]*vo.VolumeVO, error) {
-	all, err := QueryVolumes(c, apiutil.QueryParams{Limit: volumeSearchScanLimit})
-	if err != nil {
-		return nil, err
-	}
-	needle := strings.ToLower(query)
-	matches := make([]*vo.VolumeVO, 0, len(all))
-	for _, v := range all {
-		if strings.Contains(strings.ToLower(v.Title), needle) {
-			matches = append(matches, v)
-		}
-	}
-	return matches, nil
+	term, rest := extractSearchTerm(params)
+	filter, _, _ := apiutil.ConvertQueryParams(rest)
+	filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
+	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+
+	return database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
 }
 
 // CatalogStats is a small aggregate over the live volume set - the total count and the most

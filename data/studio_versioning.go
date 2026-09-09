@@ -199,6 +199,12 @@ func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO
 	return vos, nil
 }
 
+// CountStudios returns how many live studios match params' filter, without fetching them -
+// backs catalog-api's list-response meta.total. Same filter as QueryStudios.
+func CountStudios(c context.Context, params apiutil.QueryParams) (int64, error) {
+	return studioVersioning.count(c, params)
+}
+
 // SearchStudios finds live studios whose name contains query (case-insensitive), scanning the
 // full collection - see data.SearchPersons for why this scans in memory rather than pushing the
 // match down to Mongo.

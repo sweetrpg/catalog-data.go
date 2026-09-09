@@ -211,6 +211,12 @@ func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.License
 	return vos, nil
 }
 
+// CountLicenses returns how many live licenses match params' filter, without fetching them -
+// backs catalog-api's list-response meta.total. Same filter as QueryLicenses.
+func CountLicenses(c context.Context, params apiutil.QueryParams) (int64, error) {
+	return licenseVersioning.count(c, params)
+}
+
 // SearchLicenses finds live licenses whose title contains query (case-insensitive), scanning the
 // full collection - see data.SearchPersons for why this scans in memory rather than pushing the
 // match down to Mongo.
