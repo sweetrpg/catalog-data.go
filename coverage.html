@@ -57,21 +57,21 @@
 				
 				<option value="file0">github.com/sweetrpg/catalog-data.go/data/contribution.go (60.4%)</option>
 				
-				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (62.9%)</option>
+				<option value="file1">github.com/sweetrpg/catalog-data.go/data/entity_versioning.go (64.4%)</option>
 				
-				<option value="file2">github.com/sweetrpg/catalog-data.go/data/license_versioning.go (31.1%)</option>
+				<option value="file2">github.com/sweetrpg/catalog-data.go/data/license_versioning.go (31.7%)</option>
 				
-				<option value="file3">github.com/sweetrpg/catalog-data.go/data/person_versioning.go (36.0%)</option>
+				<option value="file3">github.com/sweetrpg/catalog-data.go/data/person_versioning.go (36.7%)</option>
 				
-				<option value="file4">github.com/sweetrpg/catalog-data.go/data/publisher_versioning.go (62.4%)</option>
+				<option value="file4">github.com/sweetrpg/catalog-data.go/data/publisher_versioning.go (62.8%)</option>
 				
 				<option value="file5">github.com/sweetrpg/catalog-data.go/data/review.go (0.0%)</option>
 				
-				<option value="file6">github.com/sweetrpg/catalog-data.go/data/studio_versioning.go (37.4%)</option>
+				<option value="file6">github.com/sweetrpg/catalog-data.go/data/studio_versioning.go (38.0%)</option>
 				
 				<option value="file7">github.com/sweetrpg/catalog-data.go/data/system_client.go (0.0%)</option>
 				
-				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (74.6%)</option>
+				<option value="file8">github.com/sweetrpg/catalog-data.go/data/volume.go (75.6%)</option>
 				
 				<option value="file9">github.com/sweetrpg/catalog-data.go/data/volume_migration.go (66.7%)</option>
 				
@@ -266,6 +266,7 @@ import (
         "net/url"
         "reflect"
         "sort"
+        "strings"
         "time"
 
         apiutil "github.com/sweetrpg/api-core.go/util"
@@ -287,42 +288,61 @@ const searchTermField = "q"
 // extractSearchTerm pulls a searchTermField filter out of params (returning its first value and
 // a copy of params with that entry removed), so "q" never reaches ConvertQueryParams as a
 // literal field. The returned QueryParams shares no backing array with the caller's.
-func extractSearchTerm(params apiutil.QueryParams) (string, apiutil.QueryParams) <span class="cov6" title="16">{
+func extractSearchTerm(params apiutil.QueryParams) (string, apiutil.QueryParams) <span class="cov8" title="39">{
         var term string
         kept := make([]apiutil.Filter, 0, len(params.Filter))
-        for _, f := range params.Filter </span><span class="cov4" title="5">{
-                if f.Field == searchTermField </span><span class="cov1" title="1">{
-                        if len(f.Value) &gt; 0 </span><span class="cov1" title="1">{
+        for _, f := range params.Filter </span><span class="cov6" title="18">{
+                if f.Field == searchTermField </span><span class="cov3" title="4">{
+                        if len(f.Value) &gt; 0 </span><span class="cov3" title="4">{
                                 term = f.Value[0]
                         }</span>
-                        <span class="cov1" title="1">continue</span>
+                        <span class="cov3" title="4">continue</span>
                 }
-                <span class="cov3" title="4">kept = append(kept, f)</span>
+                <span class="cov6" title="14">kept = append(kept, f)</span>
         }
-        <span class="cov6" title="16">params.Filter = kept
+        <span class="cov8" title="39">params.Filter = kept
         return term, params</span>
+}
+
+// normalizeSort rewrites a ConvertQueryParams sort doc so the `sort=-field` descending form
+// works. go.jtlabs.io/query keeps the leading "-" in the field name ("-name"), and
+// api-core.go's GetQueryParams hardcodes every sort Order to 1 (ascending) - so "-name" arrives
+// here as {"-name": 1}. Turn a "-" prefix into a real descending sort: {"name": -1}.
+func normalizeSort(sortOrder bson.D) bson.D <span class="cov7" title="29">{
+        if len(sortOrder) == 0 </span><span class="cov7" title="25">{
+                return sortOrder
+        }</span>
+        <span class="cov3" title="4">out := make(bson.D, len(sortOrder))
+        for i, e := range sortOrder </span><span class="cov3" title="4">{
+                if field, found := strings.CutPrefix(e.Key, "-"); found </span><span class="cov2" title="2">{
+                        out[i] = bson.E{Key: field, Value: -1}
+                }</span> else<span class="cov2" title="2"> {
+                        out[i] = e
+                }</span>
+        }
+        <span class="cov3" title="4">return out</span>
 }
 
 // appendSearchOr adds a case-insensitive "contains" $or across fields for a non-empty term.
 // Each clause is the same { $regex, $options: "i" } shape api-core.go's contains operator
 // produces, so a per-field filter[x][contains]=y and a multi-field q stay consistent.
-func appendSearchOr(filter bson.D, term string, fields []string) bson.D <span class="cov6" title="16">{
-        if term == "" || len(fields) == 0 </span><span class="cov6" title="15">{
+func appendSearchOr(filter bson.D, term string, fields []string) bson.D <span class="cov8" title="39">{
+        if term == "" || len(fields) == 0 </span><span class="cov7" title="35">{
                 return filter
         }</span>
-        <span class="cov1" title="1">or := make(bson.A, 0, len(fields))
-        for _, f := range fields </span><span class="cov3" title="3">{
+        <span class="cov3" title="4">or := make(bson.A, 0, len(fields))
+        for _, f := range fields </span><span class="cov5" title="12">{
                 or = append(or, bson.D{{Key: f, Value: bson.D{{Key: "$regex", Value: term}, {Key: "$options", Value: "i"}}}})
         }</span>
-        <span class="cov1" title="1">return append(filter, bson.E{Key: "$or", Value: or})</span>
+        <span class="cov3" title="4">return append(filter, bson.E{Key: "$or", Value: or})</span>
 }
 
 // parseWebsite best-effort parses a VO's plain-string website into the url.URL the models layer
 // still stores (Mongo bson round-trips url.URL fine - only the JSON:API wire format needed the
 // plain-string fix). An unparseable or empty string yields the zero value, matching the
 // server-layer field accessors' same silent-skip-on-parse-error behavior.
-func parseWebsite(s string) url.URL <span class="cov8" title="40">{
-        if u, err := url.Parse(s); err == nil &amp;&amp; u != nil </span><span class="cov8" title="40">{
+func parseWebsite(s string) url.URL <span class="cov8" title="50">{
+        if u, err := url.Parse(s); err == nil &amp;&amp; u != nil </span><span class="cov8" title="50">{
                 return *u
         }</span>
         <span class="cov0" title="0">return url.URL{}</span>
@@ -378,33 +398,49 @@ type metaVersion[T any] struct {
 // the version collection, then each row's meta is joined to drop soft-deleted records. A `q`
 // filter param becomes a case-insensitive $or across cfg.searchFields; with no explicit sort,
 // results order by searchFields[0].
-func (cfg entityVersioningConfig[T]) query(c context.Context, params apiutil.QueryParams) ([]metaVersion[T], error) <span class="cov4" title="6">{
+func (cfg entityVersioningConfig[T]) query(c context.Context, params apiutil.QueryParams) ([]metaVersion[T], error) <span class="cov6" title="16">{
         term, rest := extractSearchTerm(params)
         filter, sortOrder, projection := apiutil.ConvertQueryParams(rest)
         filter = appendSearchOr(filter, term, cfg.searchFields)
         filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
-        if len(sortOrder) == 0 &amp;&amp; len(cfg.searchFields) &gt; 0 </span><span class="cov4" title="6">{
+        sortOrder = normalizeSort(sortOrder)
+        if len(sortOrder) == 0 &amp;&amp; len(cfg.searchFields) &gt; 0 </span><span class="cov6" title="14">{
                 sortOrder = bson.D{{Key: cfg.searchFields[0], Value: 1}}
         }</span>
 
-        <span class="cov4" title="6">versions, err := database.Query[T](cfg.versionCollection, filter, sortOrder, projection, params.Start, params.Limit)
+        <span class="cov6" title="16">versions, err := database.Query[T](cfg.versionCollection, filter, sortOrder, projection, params.Start, params.Limit)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
 
-        <span class="cov4" title="6">out := make([]metaVersion[T], 0, len(versions))
-        for _, v := range versions </span><span class="cov7" title="20">{
+        <span class="cov6" title="16">out := make([]metaVersion[T], 0, len(versions))
+        for _, v := range versions </span><span class="cov8" title="58">{
                 meta, err := cfg.getMeta(c, cfg.recordID(v))
                 if err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
-                <span class="cov7" title="20">if meta == nil || meta.DeletedAt != nil </span><span class="cov1" title="1">{
+                <span class="cov8" title="58">if meta == nil || meta.DeletedAt != nil </span><span class="cov1" title="1">{
                         continue</span>
                 }
-                <span class="cov7" title="19">out = append(out, metaVersion[T]{Meta: meta, Version: v})</span>
+                <span class="cov8" title="57">out = append(out, metaVersion[T]{Meta: meta, Version: v})</span>
         }
-        <span class="cov4" title="6">return out, nil</span>
+        <span class="cov6" title="16">return out, nil</span>
 }
+
+// count returns how many live version records match params' filter - the same `q` $or
+// expansion over cfg.searchFields and any `filter[...][contains]` clauses query() applies, plus
+// `state: live` - via a driver CountDocuments. No documents, no sort, no page window. Backs
+// catalog-api's list-response `meta.total`. Like stats() it counts on the version collection
+// without joining meta, so a record whose meta is soft-deleted but whose live version still
+// exists is counted (query()'s per-row meta check would drop it); acceptable for a browse-pager
+// total, matching stats()'s existing behavior.
+func (cfg entityVersioningConfig[T]) count(c context.Context, params apiutil.QueryParams) (int64, error) <span class="cov5" title="8">{
+        term, rest := extractSearchTerm(params)
+        filter, _, _ := apiutil.ConvertQueryParams(rest)
+        filter = appendSearchOr(filter, term, cfg.searchFields)
+        filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+        return database.Db.Collection(cfg.versionCollection).CountDocuments(c, filter)
+}</span>
 
 // TypeStats is one entity type's catalog-landing-page-summary card: a live-record count plus
 // the single most recently submitted live record, or zero-value/nil fields if the type has no
@@ -452,7 +488,7 @@ func (cfg entityVersioningConfig[T]) stats(c context.Context) (*TypeStats, error
         return stats, nil</span>
 }
 
-func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <span class="cov9" title="46">{
+func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <span class="cov8" title="58">{
         _, err := database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
                 Keys:    bson.D{{Key: "record_id", Value: 1}, {Key: "version", Value: 1}},
                 Options: options.Index().SetUnique(true),
@@ -460,7 +496,7 @@ func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <spa
         if err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("%s: create record_id+version index: %w", cfg.typeName, err)
         }</span>
-        <span class="cov9" title="46">_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
+        <span class="cov8" title="58">_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
                 Keys: bson.D{{Key: "record_id", Value: 1}, {Key: "state", Value: 1}},
         })
         if err != nil </span><span class="cov0" title="0">{
@@ -469,7 +505,7 @@ func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <spa
         // Backs stats()'s count (state-only equality) and most-recent (state equality + submitted_at
         // sort) queries - neither can use the record_id-leading index above, since neither filters on
         // record_id.
-        <span class="cov9" title="46">_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
+        <span class="cov8" title="58">_, err = database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
                 Keys: bson.D{{Key: "state", Value: 1}, {Key: "submitted_at", Value: -1}},
         })
         if err != nil </span><span class="cov0" title="0">{
@@ -478,50 +514,50 @@ func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error <spa
         // One index per search field so an exact/anchored filter (or the default searchFields[0]
         // sort) on it is index-backed. An unanchored contains $regex can't use these efficiently -
         // tracked as a follow-up (design.md's "Index every field a contains filter can target").
-        <span class="cov9" title="46">for _, field := range cfg.searchFields </span><span class="cov9" title="46">{
+        <span class="cov8" title="58">for _, field := range cfg.searchFields </span><span class="cov8" title="58">{
                 if _, err := database.Db.Collection(cfg.versionCollection).Indexes().CreateOne(c, mongo.IndexModel{
                         Keys: bson.D{{Key: field, Value: 1}},
                 }); err != nil </span><span class="cov0" title="0">{
                         return fmt.Errorf("%s: create %s index: %w", cfg.typeName, field, err)
                 }</span>
         }
-        <span class="cov9" title="46">return nil</span>
+        <span class="cov8" title="58">return nil</span>
 }
 
-func (cfg entityVersioningConfig[T]) getMeta(c context.Context, id string) (*models.EntityMeta, error) <span class="cov10" title="68">{
+func (cfg entityVersioningConfig[T]) getMeta(c context.Context, id string) (*models.EntityMeta, error) <span class="cov10" title="106">{
         results, err := database.Query[models.EntityMeta](cfg.metaCollection, bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov10" title="68">if len(results) == 0 </span><span class="cov4" title="6">{
+        <span class="cov10" title="106">if len(results) == 0 </span><span class="cov4" title="6">{
                 return nil, nil
         }</span>
-        <span class="cov9" title="62">return results[0], nil</span>
+        <span class="cov9" title="100">return results[0], nil</span>
 }
 
-func (cfg entityVersioningConfig[T]) getVersion(c context.Context, recordID string, version int) (*T, error) <span class="cov8" title="36">{
+func (cfg entityVersioningConfig[T]) getVersion(c context.Context, recordID string, version int) (*T, error) <span class="cov7" title="36">{
         filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
         results, err := database.Query[T](cfg.versionCollection, filter, nil, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov8" title="36">if len(results) == 0 </span><span class="cov0" title="0">{
+        <span class="cov7" title="36">if len(results) == 0 </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-        <span class="cov8" title="36">return results[0], nil</span>
+        <span class="cov7" title="36">return results[0], nil</span>
 }
 
-func (cfg entityVersioningConfig[T]) setVersionState(c context.Context, recordID string, version int, fields bson.D) error <span class="cov7" title="18">{
+func (cfg entityVersioningConfig[T]) setVersionState(c context.Context, recordID string, version int, fields bson.D) error <span class="cov6" title="18">{
         filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
         _, err := database.Db.Collection(cfg.versionCollection).UpdateOne(c, filter, bson.D{{Key: "$set", Value: fields}})
         return err
 }</span>
 
-func (cfg entityVersioningConfig[T]) archiveVersion(c context.Context, recordID string, version int) error <span class="cov6" title="11">{
+func (cfg entityVersioningConfig[T]) archiveVersion(c context.Context, recordID string, version int) error <span class="cov5" title="11">{
         return cfg.setVersionState(c, recordID, version, bson.D{{Key: "state", Value: string(models.VersionStateArchived)}})
 }</span>
 
-func (cfg entityVersioningConfig[T]) setMetaCurrentVersion(c context.Context, recordID string, version int, actingUserID string) error <span class="cov6" title="11">{
+func (cfg entityVersioningConfig[T]) setMetaCurrentVersion(c context.Context, recordID string, version int, actingUserID string) error <span class="cov5" title="11">{
         _, err := database.Db.Collection(cfg.metaCollection).UpdateOne(
                 c,
                 bson.D{{Key: "_id", Value: recordID}},
@@ -568,7 +604,7 @@ func (cfg entityVersioningConfig[T]) changedFields(submitted, base *T) []string 
 
 // addEntity creates a record's meta record and its first (live) version. entity must already
 // carry its substantive field values; addEntity sets id/record_id/version/lifecycle fields.
-func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, createdBy string) (*string, error) <span class="cov8" title="32">{
+func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, createdBy string) (*string, error) <span class="cov8" title="44">{
         now := time.Now()
         metaID := primitive.NewObjectID().Hex()
         meta := models.EntityMeta{
@@ -579,7 +615,7 @@ func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, cre
                 return nil, err
         }</span>
 
-        <span class="cov8" title="32">cfg.setID(entity, primitive.NewObjectID().Hex())
+        <span class="cov8" title="44">cfg.setID(entity, primitive.NewObjectID().Hex())
         cfg.setRecordID(entity, metaID)
         cfg.setVersion(entity, 1)
         lc := cfg.lifecycle(entity)
@@ -591,25 +627,25 @@ func (cfg entityVersioningConfig[T]) addEntity(c context.Context, entity *T, cre
         if _, err := database.Insert[T](cfg.versionCollection, *entity); err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov8" title="32">return &amp;metaID, nil</span>
+        <span class="cov8" title="44">return &amp;metaID, nil</span>
 }
 
 // createVersion creates a new version for an existing record - editor/admin: state Live, goes
 // current immediately and archives the previous current version; submitter: state Submitted,
 // current pointer untouched. entity must already carry its desired substantive field values.
-func (cfg entityVersioningConfig[T]) createVersion(c context.Context, id string, entity *T, state models.VersionState, submittedBy string) (*T, error) <span class="cov7" title="17">{
+func (cfg entityVersioningConfig[T]) createVersion(c context.Context, id string, entity *T, state models.VersionState, submittedBy string) (*T, error) <span class="cov6" title="17">{
         return cfg.createVersionWithSubmission(c, id, entity, state, submittedBy, time.Now())
 }</span>
 
 // createVersionWithSubmission is createVersion with a caller-supplied submittedAt instead of
 // always stamping "now" - used by migration, which preserves a migrated proposal's original
 // submission time rather than the time of the migration run itself.
-func (cfg entityVersioningConfig[T]) createVersionWithSubmission(c context.Context, id string, entity *T, state models.VersionState, submittedBy string, submittedAt time.Time) (*T, error) <span class="cov7" title="18">{
+func (cfg entityVersioningConfig[T]) createVersionWithSubmission(c context.Context, id string, entity *T, state models.VersionState, submittedBy string, submittedAt time.Time) (*T, error) <span class="cov6" title="18">{
         meta, err := cfg.getMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov7" title="18">if meta == nil </span><span class="cov3" title="4">{
+        <span class="cov6" title="18">if meta == nil </span><span class="cov3" title="4">{
                 return nil, nil
         }</span>
 
@@ -1004,11 +1040,11 @@ var licenseVersioning = entityVersioningConfig[models.LicenseVersion]{
         metaCollection:    licenseMetaCollection,
         versionCollection: licenseVersionCollection,
         typeName:          "license",
-        lifecycle:         func(v *models.LicenseVersion) *models.VersionLifecycle <span class="cov9" title="8">{ return &amp;v.VersionLifecycle }</span>,
-        setID:             func(v *models.LicenseVersion, id string) <span class="cov8" title="7">{ v.ID = id }</span>,
-        setRecordID:       func(v *models.LicenseVersion, id string) <span class="cov8" title="7">{ v.RecordID = id }</span>,
-        setVersion:        func(v *models.LicenseVersion, n int) <span class="cov8" title="7">{ v.Version = n }</span>,
-        recordID:          func(v *models.LicenseVersion) string <span class="cov1" title="1">{ return v.RecordID }</span>,
+        lifecycle:         func(v *models.LicenseVersion) *models.VersionLifecycle <span class="cov9" title="10">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.LicenseVersion, id string) <span class="cov8" title="9">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.LicenseVersion, id string) <span class="cov8" title="9">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.LicenseVersion, n int) <span class="cov8" title="9">{ v.Version = n }</span>,
+        recordID:          func(v *models.LicenseVersion) string <span class="cov8" title="7">{ return v.RecordID }</span>,
         displayName:       func(v *models.LicenseVersion) string <span class="cov0" title="0">{ return v.Title }</span>,
         searchFields:      []string{"title"},
         fields: map[string]entityFieldAccessor[models.LicenseVersion]{
@@ -1028,7 +1064,7 @@ var licenseVersioning = entityVersioningConfig[models.LicenseVersion]{
 
 // EnsureLicenseVersioningIndexes creates the indexes license version queries rely on. Safe to
 // call on every startup.
-func EnsureLicenseVersioningIndexes(c context.Context) error <span class="cov10" title="9">{
+func EnsureLicenseVersioningIndexes(c context.Context) error <span class="cov10" title="12">{
         return licenseVersioning.ensureIndexes(c)
 }</span>
 
@@ -1043,7 +1079,7 @@ func RestoreLicense(c context.Context, id string, restoredBy string) error <span
         return licenseVersioning.restore(c, id, restoredBy)
 }</span>
 
-func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO <span class="cov5" title="3">{
+func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO <span class="cov4" title="3">{
         return &amp;vo.LicenseVersionVO{
                 ID: version.ID, RecordID: version.RecordID, Version: version.Version,
                 Title: version.Title, ShortTitle: version.ShortTitle, LicenseVer: version.LicenseVer,
@@ -1060,7 +1096,7 @@ func licenseVersionToVO(version *models.LicenseVersion) *vo.LicenseVersionVO <sp
         }
 }</span>
 
-func licenseVersionFields(license *vo.LicenseVO) models.LicenseVersion <span class="cov9" title="8">{
+func licenseVersionFields(license *vo.LicenseVO) models.LicenseVersion <span class="cov9" title="10">{
         return models.LicenseVersion{
                 Title: license.Title, ShortTitle: license.ShortTitle, LicenseVer: license.Version,
                 Deed: license.Deed, LegalCode: license.LegalCode, Website: parseWebsite(license.Website),
@@ -1070,7 +1106,7 @@ func licenseVersionFields(license *vo.LicenseVO) models.LicenseVersion <span cla
         }
 }</span>
 
-func flattenLicense(meta *models.EntityMeta, version *models.LicenseVersion) *vo.LicenseVO <span class="cov5" title="3">{
+func flattenLicense(meta *models.EntityMeta, version *models.LicenseVersion) *vo.LicenseVO <span class="cov8" title="9">{
         return &amp;vo.LicenseVO{
                 ID: meta.ID, Title: version.Title, ShortTitle: version.ShortTitle, Version: version.LicenseVer,
                 Deed: version.Deed, LegalCode: version.LegalCode, Website: version.Website.String(),
@@ -1086,7 +1122,7 @@ func flattenLicense(meta *models.EntityMeta, version *models.LicenseVersion) *vo
 }</span>
 
 // AddLicense creates a license's meta record and its first (live) version.
-func AddLicense(c context.Context, license *vo.LicenseVO) (*string, error) <span class="cov7" title="5">{
+func AddLicense(c context.Context, license *vo.LicenseVO) (*string, error) <span class="cov8" title="7">{
         version := licenseVersionFields(license)
         return licenseVersioning.addEntity(c, &amp;version, license.CreatedBy)
 }</span>
@@ -1111,7 +1147,7 @@ func GetLicense(c context.Context, id string) (*vo.LicenseVO, error) <span class
 }
 
 // UpdateLicense creates a new version of the license rather than mutating in place.
-func UpdateLicense(c context.Context, id string, license *vo.LicenseVO, state models.VersionState) (*vo.LicenseVersionVO, error) <span class="cov5" title="3">{
+func UpdateLicense(c context.Context, id string, license *vo.LicenseVO, state models.VersionState) (*vo.LicenseVersionVO, error) <span class="cov4" title="3">{
         version := licenseVersionFields(license)
         result, err := licenseVersioning.createVersion(c, id, &amp;version, state, license.UpdatedBy)
         if err != nil || result == nil </span><span class="cov1" title="1">{
@@ -1180,17 +1216,23 @@ func CountSubmittedLicenseVersionsBySubmitter(c context.Context, submittedBy str
 }</span>
 
 // QueryLicenses lists the current (live) version of every license matching params.
-func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) <span class="cov1" title="1">{
+func QueryLicenses(c context.Context, params apiutil.QueryParams) ([]*vo.LicenseVO, error) <span class="cov4" title="3">{
         rows, err := licenseVersioning.query(c, params)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov1" title="1">vos := make([]*vo.LicenseVO, 0, len(rows))
-        for _, r := range rows </span><span class="cov1" title="1">{
+        <span class="cov4" title="3">vos := make([]*vo.LicenseVO, 0, len(rows))
+        for _, r := range rows </span><span class="cov8" title="7">{
                 vos = append(vos, flattenLicense(r.Meta, r.Version))
         }</span>
-        <span class="cov1" title="1">return vos, nil</span>
+        <span class="cov4" title="3">return vos, nil</span>
 }
+
+// CountLicenses returns how many live licenses match params' filter, without fetching them -
+// backs catalog-api's list-response meta.total. Same filter as QueryLicenses.
+func CountLicenses(c context.Context, params apiutil.QueryParams) (int64, error) <span class="cov3" title="2">{
+        return licenseVersioning.count(c, params)
+}</span>
 
 // SearchLicenses finds live licenses whose title contains query (case-insensitive), scanning the
 // full collection - see data.SearchPersons for why this scans in memory rather than pushing the
@@ -1270,11 +1312,11 @@ var personVersioning = entityVersioningConfig[models.PersonVersion]{
         metaCollection:    personMetaCollection,
         versionCollection: personVersionCollection,
         typeName:          "person",
-        lifecycle:         func(v *models.PersonVersion) *models.VersionLifecycle <span class="cov10" title="10">{ return &amp;v.VersionLifecycle }</span>,
-        setID:             func(v *models.PersonVersion, id string) <span class="cov9" title="9">{ v.ID = id }</span>,
-        setRecordID:       func(v *models.PersonVersion, id string) <span class="cov9" title="9">{ v.RecordID = id }</span>,
-        setVersion:        func(v *models.PersonVersion, n int) <span class="cov9" title="9">{ v.Version = n }</span>,
-        recordID:          func(v *models.PersonVersion) string <span class="cov1" title="1">{ return v.RecordID }</span>,
+        lifecycle:         func(v *models.PersonVersion) *models.VersionLifecycle <span class="cov10" title="12">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.PersonVersion, id string) <span class="cov9" title="11">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.PersonVersion, id string) <span class="cov9" title="11">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.PersonVersion, n int) <span class="cov9" title="11">{ v.Version = n }</span>,
+        recordID:          func(v *models.PersonVersion) string <span class="cov8" title="7">{ return v.RecordID }</span>,
         displayName:       func(v *models.PersonVersion) string <span class="cov0" title="0">{ return v.Name }</span>,
         searchFields:      []string{"name"},
         fields: map[string]entityFieldAccessor[models.PersonVersion]{
@@ -1287,7 +1329,7 @@ var personVersioning = entityVersioningConfig[models.PersonVersion]{
 
 // EnsurePersonVersioningIndexes creates the indexes person version queries rely on. Safe to call
 // on every startup.
-func EnsurePersonVersioningIndexes(c context.Context) error <span class="cov9" title="9">{
+func EnsurePersonVersioningIndexes(c context.Context) error <span class="cov10" title="12">{
         return personVersioning.ensureIndexes(c)
 }</span>
 
@@ -1302,7 +1344,7 @@ func RestorePerson(c context.Context, id string, restoredBy string) error <span 
         return personVersioning.restore(c, id, restoredBy)
 }</span>
 
-func personVersionToVO(version *models.PersonVersion) *vo.PersonVersionVO <span class="cov5" title="3">{
+func personVersionToVO(version *models.PersonVersion) *vo.PersonVersionVO <span class="cov4" title="3">{
         return &amp;vo.PersonVersionVO{
                 ID: version.ID, RecordID: version.RecordID, Version: version.Version,
                 Name: version.Name, Notes: version.Notes,
@@ -1317,7 +1359,7 @@ func personVersionToVO(version *models.PersonVersion) *vo.PersonVersionVO <span 
         }
 }</span>
 
-func personVersionFields(person *vo.PersonVO) models.PersonVersion <span class="cov10" title="10">{
+func personVersionFields(person *vo.PersonVO) models.PersonVersion <span class="cov10" title="12">{
         return models.PersonVersion{
                 Name: person.Name, Notes: person.Notes,
                 Properties: modelcoreutil.ToPropertyModels(person.Properties),
@@ -1325,7 +1367,7 @@ func personVersionFields(person *vo.PersonVO) models.PersonVersion <span class="
         }
 }</span>
 
-func flattenPerson(meta *models.EntityMeta, version *models.PersonVersion) *vo.PersonVO <span class="cov7" title="5">{
+func flattenPerson(meta *models.EntityMeta, version *models.PersonVersion) *vo.PersonVO <span class="cov9" title="11">{
         return &amp;vo.PersonVO{
                 ID: meta.ID, Name: version.Name, Notes: version.Notes,
                 Properties: modelcoreutil.FromPropertyModels(version.Properties),
@@ -1339,7 +1381,7 @@ func flattenPerson(meta *models.EntityMeta, version *models.PersonVersion) *vo.P
 }</span>
 
 // AddPerson creates a person's meta record and its first (live) version.
-func AddPerson(c context.Context, person *vo.PersonVO) (*string, error) <span class="cov8" title="7">{
+func AddPerson(c context.Context, person *vo.PersonVO) (*string, error) <span class="cov8" title="9">{
         version := personVersionFields(person)
         return personVersioning.addEntity(c, &amp;version, person.CreatedBy)
 }</span>
@@ -1364,7 +1406,7 @@ func GetPerson(c context.Context, id string) (*vo.PersonVO, error) <span class="
 }
 
 // UpdatePerson creates a new version of the person rather than mutating in place.
-func UpdatePerson(c context.Context, id string, person *vo.PersonVO, state models.VersionState) (*vo.PersonVersionVO, error) <span class="cov5" title="3">{
+func UpdatePerson(c context.Context, id string, person *vo.PersonVO, state models.VersionState) (*vo.PersonVersionVO, error) <span class="cov4" title="3">{
         version := personVersionFields(person)
         result, err := personVersioning.createVersion(c, id, &amp;version, state, person.UpdatedBy)
         if err != nil || result == nil </span><span class="cov1" title="1">{
@@ -1433,17 +1475,23 @@ func CountSubmittedPersonVersionsBySubmitter(c context.Context, submittedBy stri
 }</span>
 
 // QueryPersons lists the current (live) version of every person matching params.
-func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) <span class="cov1" title="1">{
+func QueryPersons(c context.Context, params apiutil.QueryParams) ([]*vo.PersonVO, error) <span class="cov4" title="3">{
         rows, err := personVersioning.query(c, params)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov1" title="1">vos := make([]*vo.PersonVO, 0, len(rows))
-        for _, r := range rows </span><span class="cov1" title="1">{
+        <span class="cov4" title="3">vos := make([]*vo.PersonVO, 0, len(rows))
+        for _, r := range rows </span><span class="cov8" title="7">{
                 vos = append(vos, flattenPerson(r.Meta, r.Version))
         }</span>
-        <span class="cov1" title="1">return vos, nil</span>
+        <span class="cov4" title="3">return vos, nil</span>
 }
+
+// CountPersons returns how many live persons match params' filter, without fetching them -
+// backs catalog-api's list-response meta.total. Same filter as QueryPersons.
+func CountPersons(c context.Context, params apiutil.QueryParams) (int64, error) <span class="cov3" title="2">{
+        return personVersioning.count(c, params)
+}</span>
 
 // searchScanLimit bounds how many live persons SearchPersons scans in memory - name isn't a
 // field on personMetaCollection (it only lives on the version document QueryPersons resolves
@@ -1529,11 +1577,11 @@ var publisherVersioning = entityVersioningConfig[models.PublisherVersion]{
         metaCollection:    publisherMetaCollection,
         versionCollection: publisherVersionCollection,
         typeName:          "publisher",
-        lifecycle:         func(v *models.PublisherVersion) *models.VersionLifecycle <span class="cov9" title="27">{ return &amp;v.VersionLifecycle }</span>,
-        setID:             func(v *models.PublisherVersion, id string) <span class="cov9" title="23">{ v.ID = id }</span>,
-        setRecordID:       func(v *models.PublisherVersion, id string) <span class="cov9" title="23">{ v.RecordID = id }</span>,
-        setVersion:        func(v *models.PublisherVersion, n int) <span class="cov9" title="23">{ v.Version = n }</span>,
-        recordID:          func(v *models.PublisherVersion) string <span class="cov8" title="17">{ return v.RecordID }</span>,
+        lifecycle:         func(v *models.PublisherVersion) *models.VersionLifecycle <span class="cov9" title="33">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.PublisherVersion, id string) <span class="cov8" title="29">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.PublisherVersion, id string) <span class="cov8" title="29">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.PublisherVersion, n int) <span class="cov8" title="29">{ v.Version = n }</span>,
+        recordID:          func(v *models.PublisherVersion) string <span class="cov9" title="40">{ return v.RecordID }</span>,
         displayName:       func(v *models.PublisherVersion) string <span class="cov0" title="0">{ return v.Name }</span>,
         searchFields:      []string{"name"},
         fields: map[string]entityFieldAccessor[models.PublisherVersion]{
@@ -1548,7 +1596,7 @@ var publisherVersioning = entityVersioningConfig[models.PublisherVersion]{
 
 // EnsurePublisherVersioningIndexes creates the indexes publisher version queries rely on. Safe to
 // call on every startup.
-func EnsurePublisherVersioningIndexes(c context.Context) error <span class="cov8" title="18">{
+func EnsurePublisherVersioningIndexes(c context.Context) error <span class="cov7" title="21">{
         return publisherVersioning.ensureIndexes(c)
 }</span>
 
@@ -1564,7 +1612,7 @@ func RestorePublisher(c context.Context, id string, restoredBy string) error <sp
         return publisherVersioning.restore(c, id, restoredBy)
 }</span>
 
-func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersionVO <span class="cov8" title="17">{
+func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersionVO <span class="cov7" title="17">{
         return &amp;vo.PublisherVersionVO{
                 ID: version.ID, RecordID: version.RecordID, Version: version.Version,
                 Name: version.Name, Address: version.Address, Website: version.Website.String(), Notes: version.Notes,
@@ -1579,7 +1627,7 @@ func publisherVersionToVO(version *models.PublisherVersion) *vo.PublisherVersion
         }
 }</span>
 
-func publisherVersionFields(publisher *vo.PublisherVO) models.PublisherVersion <span class="cov9" title="22">{
+func publisherVersionFields(publisher *vo.PublisherVO) models.PublisherVersion <span class="cov8" title="28">{
         return models.PublisherVersion{
                 Name: publisher.Name, Address: publisher.Address, Website: parseWebsite(publisher.Website), Notes: publisher.Notes,
                 Properties: modelcoreutil.ToPropertyModels(publisher.Properties),
@@ -1587,7 +1635,7 @@ func publisherVersionFields(publisher *vo.PublisherVO) models.PublisherVersion <
         }
 }</span>
 
-func flattenPublisher(meta *models.EntityMeta, version *models.PublisherVersion) *vo.PublisherVO <span class="cov10" title="28">{
+func flattenPublisher(meta *models.EntityMeta, version *models.PublisherVersion) *vo.PublisherVO <span class="cov10" title="51">{
         return &amp;vo.PublisherVO{
                 ID: meta.ID, Name: version.Name, Address: version.Address, Website: version.Website.String(), Notes: version.Notes,
                 Properties: modelcoreutil.FromPropertyModels(version.Properties),
@@ -1601,41 +1649,41 @@ func flattenPublisher(meta *models.EntityMeta, version *models.PublisherVersion)
 }</span>
 
 // AddPublisher creates a publisher's meta record and its first (live) version.
-func AddPublisher(c context.Context, publisher *vo.PublisherVO) (*string, error) <span class="cov7" title="13">{
+func AddPublisher(c context.Context, publisher *vo.PublisherVO) (*string, error) <span class="cov7" title="19">{
         version := publisherVersionFields(publisher)
         return publisherVersioning.addEntity(c, &amp;version, publisher.CreatedBy)
 }</span>
 
 // GetPublisher returns the flattened view of a publisher - matching the shape this function
 // returned before meta/version were split.
-func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov7" title="12">{
+func GetPublisher(c context.Context, id string) (*vo.PublisherVO, error) <span class="cov6" title="12">{
         meta, err := publisherVersioning.getMeta(c, id)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov7" title="12">if meta == nil </span><span class="cov0" title="0">{
+        <span class="cov6" title="12">if meta == nil </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-        <span class="cov7" title="12">version, err := publisherVersioning.getVersion(c, id, meta.CurrentVersion)
+        <span class="cov6" title="12">version, err := publisherVersioning.getVersion(c, id, meta.CurrentVersion)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov7" title="12">if version == nil </span><span class="cov0" title="0">{
+        <span class="cov6" title="12">if version == nil </span><span class="cov0" title="0">{
                 return nil, nil
         }</span>
-        <span class="cov7" title="12">return flattenPublisher(meta, version), nil</span>
+        <span class="cov6" title="12">return flattenPublisher(meta, version), nil</span>
 }
 
 // UpdatePublisher creates a new version of the publisher rather than mutating in place - state
 // VersionStateLive goes current immediately (editor/admin); VersionStateSubmitted leaves the
 // current pointer untouched (submitter).
-func UpdatePublisher(c context.Context, id string, publisher *vo.PublisherVO, state models.VersionState) (*vo.PublisherVersionVO, error) <span class="cov6" title="8">{
+func UpdatePublisher(c context.Context, id string, publisher *vo.PublisherVO, state models.VersionState) (*vo.PublisherVersionVO, error) <span class="cov5" title="8">{
         version := publisherVersionFields(publisher)
         result, err := publisherVersioning.createVersion(c, id, &amp;version, state, publisher.UpdatedBy)
         if err != nil || result == nil </span><span class="cov1" title="1">{
                 return nil, err
         }</span>
-        <span class="cov6" title="7">return publisherVersionToVO(result), nil</span>
+        <span class="cov5" title="7">return publisherVersionToVO(result), nil</span>
 }
 
 // ListPublisherVersions returns every version of a publisher, newest first.
@@ -1652,12 +1700,12 @@ func ListPublisherVersions(c context.Context, id string) ([]*vo.PublisherVersion
 }
 
 // GetPublisherVersion returns one version's full snapshot, regardless of whether it's current.
-func GetPublisherVersion(c context.Context, id string, version int) (*vo.PublisherVersionVO, error) <span class="cov5" title="5">{
+func GetPublisherVersion(c context.Context, id string, version int) (*vo.PublisherVersionVO, error) <span class="cov4" title="5">{
         result, err := publisherVersioning.getVersion(c, id, version)
         if err != nil || result == nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov5" title="5">return publisherVersionToVO(result), nil</span>
+        <span class="cov4" title="5">return publisherVersionToVO(result), nil</span>
 }
 
 // AcceptPublisherVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.
@@ -1699,17 +1747,23 @@ func CountSubmittedPublisherVersionsBySubmitter(c context.Context, submittedBy s
 
 // QueryPublishers lists the current (live) version of every publisher matching params, with
 // filter/sort/page (and a `q` name search) pushed down to the query layer.
-func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) <span class="cov3" title="3">{
+func QueryPublishers(c context.Context, params apiutil.QueryParams) ([]*vo.PublisherVO, error) <span class="cov5" title="7">{
         rows, err := publisherVersioning.query(c, params)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov3" title="3">vos := make([]*vo.PublisherVO, 0, len(rows))
-        for _, r := range rows </span><span class="cov8" title="16">{
+        <span class="cov5" title="7">vos := make([]*vo.PublisherVO, 0, len(rows))
+        for _, r := range rows </span><span class="cov9" title="39">{
                 vos = append(vos, flattenPublisher(r.Meta, r.Version))
         }</span>
-        <span class="cov3" title="3">return vos, nil</span>
+        <span class="cov5" title="7">return vos, nil</span>
 }
+
+// CountPublishers returns how many live publishers match params' filter, without fetching them -
+// backs catalog-api's list-response meta.total. Same filter as QueryPublishers.
+func CountPublishers(c context.Context, params apiutil.QueryParams) (int64, error) <span class="cov2" title="2">{
+        return publisherVersioning.count(c, params)
+}</span>
 
 // SearchPublishers finds live publishers whose name contains query (case-insensitive), scanning
 // the full collection - see data.SearchPersons for why this scans in memory rather than pushing
@@ -1749,7 +1803,7 @@ func MigratePublishers(c context.Context) (int, error) <span class="cov3" title=
         return migrateEntity(c, migrationConfig[models.Publisher, models.PublisherVersion]{
                 oldCollection: "publishers",
                 versioning:    publisherVersioning,
-                id:            func(p *models.Publisher) string </span><span class="cov5" title="5">{ return p.ID }</span>,
+                id:            func(p *models.Publisher) string </span><span class="cov4" title="5">{ return p.ID }</span>,
                 auditable:     func(p *models.Publisher) modelcore.Auditable <span class="cov2" title="2">{ return p.Auditable }</span>,
                 toVersion: func(p *models.Publisher) models.PublisherVersion <span class="cov2" title="2">{
                         return models.PublisherVersion{
@@ -1871,11 +1925,11 @@ var studioVersioning = entityVersioningConfig[models.StudioVersion]{
         metaCollection:    studioMetaCollection,
         versionCollection: studioVersionCollection,
         typeName:          "studio",
-        lifecycle:         func(v *models.StudioVersion) *models.VersionLifecycle <span class="cov10" title="12">{ return &amp;v.VersionLifecycle }</span>,
-        setID:             func(v *models.StudioVersion, id string) <span class="cov8" title="9">{ v.ID = id }</span>,
-        setRecordID:       func(v *models.StudioVersion, id string) <span class="cov8" title="9">{ v.RecordID = id }</span>,
-        setVersion:        func(v *models.StudioVersion, n int) <span class="cov8" title="9">{ v.Version = n }</span>,
-        recordID:          func(v *models.StudioVersion) string <span class="cov4" title="3">{ return v.RecordID }</span>,
+        lifecycle:         func(v *models.StudioVersion) *models.VersionLifecycle <span class="cov10" title="14">{ return &amp;v.VersionLifecycle }</span>,
+        setID:             func(v *models.StudioVersion, id string) <span class="cov9" title="11">{ v.ID = id }</span>,
+        setRecordID:       func(v *models.StudioVersion, id string) <span class="cov9" title="11">{ v.RecordID = id }</span>,
+        setVersion:        func(v *models.StudioVersion, n int) <span class="cov9" title="11">{ v.Version = n }</span>,
+        recordID:          func(v *models.StudioVersion) string <span class="cov7" title="6">{ return v.RecordID }</span>,
         displayName:       func(v *models.StudioVersion) string <span class="cov3" title="2">{ return v.Name }</span>,
         searchFields:      []string{"name"},
         fields: map[string]entityFieldAccessor[models.StudioVersion]{
@@ -1889,7 +1943,7 @@ var studioVersioning = entityVersioningConfig[models.StudioVersion]{
 
 // EnsureStudioVersioningIndexes creates the indexes studio version queries rely on. Safe to call
 // on every startup.
-func EnsureStudioVersioningIndexes(c context.Context) error <span class="cov9" title="10">{
+func EnsureStudioVersioningIndexes(c context.Context) error <span class="cov9" title="13">{
         return studioVersioning.ensureIndexes(c)
 }</span>
 
@@ -1919,7 +1973,7 @@ func studioVersionToVO(version *models.StudioVersion) *vo.StudioVersionVO <span 
         }
 }</span>
 
-func studioVersionFields(studio *vo.StudioVO) models.StudioVersion <span class="cov9" title="10">{
+func studioVersionFields(studio *vo.StudioVO) models.StudioVersion <span class="cov9" title="12">{
         return models.StudioVersion{
                 Name: studio.Name, Website: parseWebsite(studio.Website), Notes: studio.Notes,
                 Properties: modelcoreutil.ToPropertyModels(studio.Properties),
@@ -1927,7 +1981,7 @@ func studioVersionFields(studio *vo.StudioVO) models.StudioVersion <span class="
         }
 }</span>
 
-func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.StudioVO <span class="cov4" title="3">{
+func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.StudioVO <span class="cov7" title="6">{
         return &amp;vo.StudioVO{
                 ID: meta.ID, Name: version.Name, Website: version.Website.String(), Notes: version.Notes,
                 Properties: modelcoreutil.FromPropertyModels(version.Properties),
@@ -1941,7 +1995,7 @@ func flattenStudio(meta *models.EntityMeta, version *models.StudioVersion) *vo.S
 }</span>
 
 // AddStudio creates a studio's meta record and its first (live) version.
-func AddStudio(c context.Context, studio *vo.StudioVO) (*string, error) <span class="cov8" title="7">{
+func AddStudio(c context.Context, studio *vo.StudioVO) (*string, error) <span class="cov8" title="9">{
         version := studioVersionFields(studio)
         return studioVersioning.addEntity(c, &amp;version, studio.CreatedBy)
 }</span>
@@ -2035,17 +2089,23 @@ func CountSubmittedStudioVersionsBySubmitter(c context.Context, submittedBy stri
 }</span>
 
 // QueryStudios lists the current (live) version of every studio matching params.
-func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) <span class="cov1" title="1">{
+func QueryStudios(c context.Context, params apiutil.QueryParams) ([]*vo.StudioVO, error) <span class="cov4" title="3">{
         rows, err := studioVersioning.query(c, params)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov1" title="1">vos := make([]*vo.StudioVO, 0, len(rows))
-        for _, r := range rows </span><span class="cov1" title="1">{
+        <span class="cov4" title="3">vos := make([]*vo.StudioVO, 0, len(rows))
+        for _, r := range rows </span><span class="cov5" title="4">{
                 vos = append(vos, flattenStudio(r.Meta, r.Version))
         }</span>
-        <span class="cov1" title="1">return vos, nil</span>
+        <span class="cov4" title="3">return vos, nil</span>
 }
+
+// CountStudios returns how many live studios match params' filter, without fetching them -
+// backs catalog-api's list-response meta.total. Same filter as QueryStudios.
+func CountStudios(c context.Context, params apiutil.QueryParams) (int64, error) <span class="cov3" title="2">{
+        return studioVersioning.count(c, params)
+}</span>
 
 // SearchStudios finds live studios whose name contains query (case-insensitive), scanning the
 // full collection - see data.SearchPersons for why this scans in memory rather than pushing the
@@ -2247,7 +2307,7 @@ import (
 )
 
 // AddVolume creates a volume's meta record and its first (live) version.
-func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov7" title="63">{
+func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span class="cov7" title="69">{
         logging.Logger.Info("AddVolume", "c", c, "volume", volume)
 
         _, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
@@ -2268,7 +2328,7 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
                 return nil, err
         }</span>
 
-        <span class="cov7" title="63">version := volumeVOToVersionFields(volume)
+        <span class="cov7" title="69">version := volumeVOToVersionFields(volume)
         version.ID = primitive.NewObjectID().Hex()
         version.RecordID = metaID
         version.Version = 1
@@ -2281,7 +2341,7 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) <span cl
                 return nil, err
         }</span>
 
-        <span class="cov7" title="63">return &amp;metaID, nil</span>
+        <span class="cov7" title="69">return &amp;metaID, nil</span>
 }
 
 // UpdateVolume creates a new version of the volume rather than mutating the record in place.
@@ -2433,20 +2493,20 @@ func GetVolume(c context.Context, id string) (*vo.VolumeVO, error) <span class="
 // counterpart to the *ByIDs functions below, which resolve IDs back into VOs. Both directions
 // live here rather than using util.Map (which always dereferences into a value slice) since
 // VolumeVO's relationship fields are pointer slices - see that struct's own doc comment for why.
-func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="395">{
+func relationIDs[T any](relations []*T, id func(*T) string) []string <span class="cov10" title="425">{
         ids := make([]string, 0, len(relations))
         for _, r := range relations </span><span class="cov5" title="21">{
                 if r != nil </span><span class="cov5" title="21">{
                         ids = append(ids, id(r))
                 }</span>
         }
-        <span class="cov10" title="395">return ids</span>
+        <span class="cov10" title="425">return ids</span>
 }
 
 // systemsFromTitles builds a volume's system relationship VOs from its denormalized
 // SystemTitles snapshot - no game-systems-api call. A system whose stored title is absent or
 // empty renders its ID as the name (see catalog-volume-detail spec's ID-fallback requirement).
-func systemsFromTitles(systemIds []string, titles map[string]string) []*vo.SystemVO <span class="cov9" title="252">{
+func systemsFromTitles(systemIds []string, titles map[string]string) []*vo.SystemVO <span class="cov9" title="278">{
         systems := make([]*vo.SystemVO, 0, len(systemIds))
         for _, id := range systemIds </span><span class="cov5" title="27">{
                 name := id
@@ -2455,13 +2515,13 @@ func systemsFromTitles(systemIds []string, titles map[string]string) []*vo.Syste
                 }</span>
                 <span class="cov5" title="27">systems = append(systems, &amp;vo.SystemVO{ID: id, GameSystem: name})</span>
         }
-        <span class="cov9" title="252">return systems</span>
+        <span class="cov9" title="278">return systems</span>
 }
 
 // pruneSystemTitles drops any stored title whose system is no longer referenced, keeping the
 // map parallel to systemIds when a reference is removed on edit.
-func pruneSystemTitles(titles map[string]string, systemIds []string) map[string]string <span class="cov7" title="79">{
-        if len(titles) == 0 </span><span class="cov7" title="71">{
+func pruneSystemTitles(titles map[string]string, systemIds []string) map[string]string <span class="cov7" title="85">{
+        if len(titles) == 0 </span><span class="cov7" title="77">{
                 return nil
         }</span>
         <span class="cov4" title="8">kept := make(map[string]string, len(systemIds))
@@ -2481,7 +2541,7 @@ func pruneSystemTitles(titles map[string]string, systemIds []string) map[string]
 // so this makes no game-systems-api call.
 func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseIds []string) (
         publishers []*vo.PublisherVO, studios []*vo.StudioVO, licenses []*vo.LicenseVO,
-) <span class="cov9" title="252">{
+) <span class="cov9" title="278">{
         publishers = make([]*vo.PublisherVO, 0, len(publisherIds))
         for _, id := range publisherIds </span><span class="cov2" title="2">{
                 publisher, err := GetPublisher(c, id)
@@ -2493,7 +2553,7 @@ func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseI
                         publishers = append(publishers, publisher)
                 }</span>
         }
-        <span class="cov9" title="252">studios = make([]*vo.StudioVO, 0, len(studioIds))
+        <span class="cov9" title="278">studios = make([]*vo.StudioVO, 0, len(studioIds))
         for _, id := range studioIds </span><span class="cov0" title="0">{
                 studio, err := GetStudio(c, id)
                 if err != nil </span><span class="cov0" title="0">{
@@ -2504,7 +2564,7 @@ func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseI
                         studios = append(studios, studio)
                 }</span>
         }
-        <span class="cov9" title="252">licenses = make([]*vo.LicenseVO, 0, len(licenseIds))
+        <span class="cov9" title="278">licenses = make([]*vo.LicenseVO, 0, len(licenseIds))
         for _, id := range licenseIds </span><span class="cov0" title="0">{
                 license, err := GetLicense(c, id)
                 if err != nil </span><span class="cov0" title="0">{
@@ -2515,14 +2575,14 @@ func resolveVolumeRelations(c context.Context, publisherIds, studioIds, licenseI
                         licenses = append(licenses, license)
                 }</span>
         }
-        <span class="cov9" title="252">return</span>
+        <span class="cov9" title="278">return</span>
 }
 
 // flattenVolume merges a meta record with its current version into the pre-versioning VolumeVO
 // shape. The full audit block (created/updated/deleted) comes from the meta record - the stable
 // record's own audit trail, stamped whenever its current-version pointer moves or it is
 // soft-deleted (PADR-0001).
-func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO <span class="cov9" title="222">{
+func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.VolumeVersion) *vo.VolumeVO <span class="cov9" title="248">{
         publishers, studios, licenses := resolveVolumeRelations(c, version.PublisherIds, version.StudioIds, version.LicenseIds)
 
         return &amp;vo.VolumeVO{
@@ -2589,7 +2649,7 @@ func volumeVersionModelToVO(c context.Context, version *models.VolumeVersion) *v
 // volumeVOToVersionFields maps a request VolumeVO's substantive fields onto a new
 // models.VolumeVersion - the caller fills in the version-lifecycle fields (ID, RecordID,
 // Version, State, BaseVersion, SubmittedBy/At).
-func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion <span class="cov7" title="79">{
+func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion <span class="cov7" title="85">{
         return models.VolumeVersion{
                 Title:          volume.Title,
                 Description:    volume.Description,
@@ -2610,7 +2670,7 @@ func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion <span cla
 // QueryVolumes lists the current (live) version of every volume matching params - the live
 // version's data is exactly today's flat volume shape, since exactly one version per record is
 // ever live at a time.
-func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) <span class="cov4" title="10">{
+func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO, error) <span class="cov4" title="13">{
         logging.Logger.Info("QueryVolumes", "c", c, "params", params)
 
         span := tracing.BuildSpanWithParams(c, "volumes", "db-get-volumes", params)
@@ -2623,14 +2683,15 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
         filter, sort, projection := apiutil.ConvertQueryParams(params)
         filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
         filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
-        if len(sort) == 0 </span><span class="cov4" title="9">{
+        sort = normalizeSort(sort)
+        if len(sort) == 0 </span><span class="cov4" title="11">{
                 // Without an explicit sort, Mongo returns natural (insertion) order - stable for an
                 // untouched record, but an edit re-inserts that record's new live version, so it jumps
                 // to the back of natural order and can fall outside a caller's default page size. A
                 // browse list shouldn't reorder itself just because one record was edited.
                 sort = bson.D{{Key: "title", Value: 1}}
         }</span>
-        <span class="cov4" title="10">logging.Logger.Debug("query volumes", "filter", filter, "sort", sort, "projection", projection)
+        <span class="cov4" title="13">logging.Logger.Debug("query volumes", "filter", filter, "sort", sort, "projection", projection)
 
         versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sort, projection, params.Start, params.Limit)
         if err != nil </span><span class="cov0" title="0">{
@@ -2642,26 +2703,45 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
         // flattenVolume -&gt; systemsFromTitles), so serving a page of volumes makes no
         // game-systems-api call. This replaced a per-volume GetSystem fan-out that was measured
         // taking 10+ seconds for one page.
-        <span class="cov4" title="10">vos := make([]*vo.VolumeVO, 0, len(versions))
-        for _, version := range versions </span><span class="cov8" title="199">{
+        <span class="cov4" title="13">vos := make([]*vo.VolumeVO, 0, len(versions))
+        for _, version := range versions </span><span class="cov9" title="225">{
                 meta, err := getVolumeMeta(c, version.RecordID)
                 if err != nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No VolumeMeta found for VolumeVersion record %s: %s", version.RecordID, err.Error()))
                         continue</span>
                 }
-                <span class="cov8" title="199">if meta == nil </span><span class="cov0" title="0">{
+                <span class="cov9" title="225">if meta == nil </span><span class="cov0" title="0">{
                         logging.Logger.Error(fmt.Sprintf("No VolumeMeta found for VolumeVersion record %s", version.RecordID))
                         continue</span>
                 }
-                <span class="cov8" title="199">if meta.DeletedAt != nil </span><span class="cov1" title="1">{
+                <span class="cov9" title="225">if meta.DeletedAt != nil </span><span class="cov1" title="1">{
                         continue</span>
                 }
-                <span class="cov8" title="198">vos = append(vos, flattenVolume(c, meta, version))</span>
+                <span class="cov9" title="224">vos = append(vos, flattenVolume(c, meta, version))</span>
         }
 
-        <span class="cov4" title="10">logging.Logger.Debug("returning volume value objects", "vos", vos)
+        <span class="cov4" title="13">logging.Logger.Debug("returning volume value objects", "vos", vos)
         return vos, nil</span>
 }
+
+// CountVolumes returns how many live volume versions match params' filter - the same `q` $or
+// expansion (title/description/tag values) and any `filter[...][contains]` clauses QueryVolumes
+// applies, plus `state: live` - via a driver CountDocuments. No documents, no sort, no page
+// window. Backs catalog-api's list-response `meta.total`. Like GetCatalogStats it counts on the
+// version collection without joining volume meta, so a volume whose meta is soft-deleted but
+// whose live version still exists is counted (QueryVolumes' per-row meta check would drop it);
+// acceptable for a browse-pager total, matching the stats path's existing behavior.
+func CountVolumes(c context.Context, params apiutil.QueryParams) (int64, error) <span class="cov2" title="2">{
+        span := tracing.BuildSpanWithParams(c, "volumes", "db-count-volumes", params)
+        defer span.End()
+
+        term, rest := extractSearchTerm(params)
+        filter, _, _ := apiutil.ConvertQueryParams(rest)
+        filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
+        filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+
+        return database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
+}</span>
 
 // CatalogStats is a small aggregate over the live volume set - the total count and the most
 // recent submission time - for callers that need a catalog-wide summary (e.g. a landing page)
@@ -2987,7 +3067,7 @@ const (
 // EnsureVolumeVersioningIndexes creates the indexes volume version queries rely on: a unique
 // (record_id, version) index so a version number can never be reused for a record, and a
 // (record_id, state) index for the pending-submission lookup. Safe to call on every startup.
-func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7" title="47">{
+func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7" title="50">{
         _, err := database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
                 Keys:    bson.D{{Key: "record_id", Value: 1}, {Key: "version", Value: 1}},
                 Options: options.Index().SetUnique(true),
@@ -2996,7 +3076,7 @@ func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7"
                 return fmt.Errorf("volumes: create record_id+version index: %w", err)
         }</span>
 
-        <span class="cov7" title="47">_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+        <span class="cov7" title="50">_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
                 Keys: bson.D{{Key: "record_id", Value: 1}, {Key: "state", Value: 1}},
         })
         if err != nil </span><span class="cov0" title="0">{
@@ -3006,7 +3086,7 @@ func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7"
         // Backs GetVolumeTypeStats/GetCatalogStats' count (state-only equality) and most-recent
         // (state equality + submitted_at sort) queries - neither can use the record_id-leading index
         // above, since neither filters on record_id.
-        <span class="cov7" title="47">_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+        <span class="cov7" title="50">_, err = database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
                 Keys: bson.D{{Key: "state", Value: 1}, {Key: "submitted_at", Value: -1}},
         })
         if err != nil </span><span class="cov0" title="0">{
@@ -3016,7 +3096,7 @@ func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7"
         // One index per field QueryVolumes' `q` search ORs over. An unanchored contains $regex
         // can't use these efficiently - see design.md's "Index every field a contains filter can
         // target" (indexed anyway so an exact/anchored filter on the same field stays cheap).
-        <span class="cov7" title="47">for _, field := range []string{"title", "description", "tags.value"} </span><span class="cov9" title="141">{
+        <span class="cov7" title="50">for _, field := range []string{"title", "description", "tags.value"} </span><span class="cov9" title="150">{
                 if _, err := database.Db.Collection(volumeVersionCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
                         Keys: bson.D{{Key: field, Value: 1}},
                 }); err != nil </span><span class="cov0" title="0">{
@@ -3024,27 +3104,27 @@ func EnsureVolumeVersioningIndexes(ctx context.Context) error <span class="cov7"
                 }</span>
         }
 
-        <span class="cov7" title="47">return nil</span>
+        <span class="cov7" title="50">return nil</span>
 }
 
-func getVolumeMeta(c context.Context, id string) (*models.VolumeMeta, error) <span class="cov10" title="250">{
+func getVolumeMeta(c context.Context, id string) (*models.VolumeMeta, error) <span class="cov10" title="276">{
         results, err := database.Query[models.VolumeMeta](volumeMetaCollection, bson.D{{Key: "_id", Value: id}}, nil, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov10" title="250">if len(results) == 0 </span><span class="cov3" title="4">{
+        <span class="cov10" title="276">if len(results) == 0 </span><span class="cov3" title="4">{
                 return nil, nil
         }</span>
-        <span class="cov9" title="246">return results[0], nil</span>
+        <span class="cov9" title="272">return results[0], nil</span>
 }
 
-func getVolumeVersion(c context.Context, recordID string, version int) (*models.VolumeVersion, error) <span class="cov7" title="40">{
+func getVolumeVersion(c context.Context, recordID string, version int) (*models.VolumeVersion, error) <span class="cov6" title="40">{
         filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
         results, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, nil, 0, 1)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
-        <span class="cov7" title="40">if len(results) == 0 </span><span class="cov1" title="1">{
+        <span class="cov6" title="40">if len(results) == 0 </span><span class="cov1" title="1">{
                 return nil, nil
         }</span>
         <span class="cov6" title="39">return results[0], nil</span>
