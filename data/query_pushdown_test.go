@@ -2,8 +2,10 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -228,6 +230,60 @@ func (suite *QueryPushdownTestSuite) TestCountMatchesUnpaginatedQueryLength() {
 	assert.NoError(suite.T(), err)
 	cLicF, err := CountLicenses(ctx, apiutil.QueryParams{Limit: big, Filter: regexFilter("title", "cntmk5")})
 	assertCount("licenses title~cntmk5", cLicF, err, len(fLic))
+}
+
+// 3b addendum: `sort=-field` sorts descending. go.jtlabs.io/query keeps the "-" and
+// api-core.go hardcodes order 1, so normalizeSort has to turn {"-name": 1} into {"name": -1}.
+func (suite *QueryPushdownTestSuite) TestDescendingSortByPrefixedField() {
+	ctx := suite.T().Context()
+	mk := fmt.Sprintf("srt%d", time.Now().UnixNano())
+
+	for _, n := range []string{mk + " Charlie", mk + " Alpha", mk + " Bravo"} {
+		_, err := AddPublisher(ctx, &vo.PublisherVO{Name: n})
+		assert.NoError(suite.T(), err)
+	}
+	descParams := apiutil.QueryParams{
+		Limit:  100,
+		Sort:   []apiutil.Sort{{Field: "-name", Order: 1}}, // exactly what GetQueryParams yields for sort=-name
+		Filter: regexFilter("name", mk),
+	}
+	rows, err := QueryPublishers(ctx, descParams)
+	assert.NoError(suite.T(), err)
+	got := make([]string, len(rows))
+	for i, r := range rows {
+		got[i] = r.Name
+	}
+	assert.Equal(suite.T(), []string{mk + " Charlie", mk + " Bravo", mk + " Alpha"}, got)
+
+	// Ascending (plain sort=name) still works.
+	ascParams := descParams
+	ascParams.Sort = []apiutil.Sort{{Field: "name", Order: 1}}
+	rows, err = QueryPublishers(ctx, ascParams)
+	assert.NoError(suite.T(), err)
+	for i, r := range rows {
+		got[i] = r.Name
+	}
+	assert.Equal(suite.T(), []string{mk + " Alpha", mk + " Bravo", mk + " Charlie"}, got)
+}
+
+func (suite *QueryPushdownTestSuite) TestDescendingSortVolumesByPrefixedTitle() {
+	ctx := suite.T().Context()
+	mk := fmt.Sprintf("vsrt%d", time.Now().UnixNano())
+	for _, t := range []string{mk + " C", mk + " A", mk + " B"} {
+		_, err := AddVolume(ctx, &vo.VolumeVO{Title: t, Description: "x"})
+		assert.NoError(suite.T(), err)
+	}
+	rows, err := QueryVolumes(ctx, apiutil.QueryParams{
+		Limit:  100,
+		Sort:   []apiutil.Sort{{Field: "-title", Order: 1}},
+		Filter: []apiutil.Filter{{Field: "q", Value: []string{mk}}},
+	})
+	assert.NoError(suite.T(), err)
+	got := make([]string, len(rows))
+	for i, r := range rows {
+		got[i] = r.Title
+	}
+	assert.Equal(suite.T(), []string{mk + " C", mk + " B", mk + " A"}, got)
 }
 
 func TestQueryPushdownTestSuite(t *testing.T) {

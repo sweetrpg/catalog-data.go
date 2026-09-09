@@ -397,6 +397,7 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+	sort = normalizeSort(sort)
 	if len(sort) == 0 {
 		// Without an explicit sort, Mongo returns natural (insertion) order - stable for an
 		// untouched record, but an edit re-inserts that record's new live version, so it jumps

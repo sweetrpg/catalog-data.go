@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	apiutil "github.com/sweetrpg/api-core.go/util"
@@ -41,6 +42,25 @@ func extractSearchTerm(params apiutil.QueryParams) (string, apiutil.QueryParams)
 	}
 	params.Filter = kept
 	return term, params
+}
+
+// normalizeSort rewrites a ConvertQueryParams sort doc so the `sort=-field` descending form
+// works. go.jtlabs.io/query keeps the leading "-" in the field name ("-name"), and
+// api-core.go's GetQueryParams hardcodes every sort Order to 1 (ascending) - so "-name" arrives
+// here as {"-name": 1}. Turn a "-" prefix into a real descending sort: {"name": -1}.
+func normalizeSort(sortOrder bson.D) bson.D {
+	if len(sortOrder) == 0 {
+		return sortOrder
+	}
+	out := make(bson.D, len(sortOrder))
+	for i, e := range sortOrder {
+		if field, found := strings.CutPrefix(e.Key, "-"); found {
+			out[i] = bson.E{Key: field, Value: -1}
+		} else {
+			out[i] = e
+		}
+	}
+	return out
 }
 
 // appendSearchOr adds a case-insensitive "contains" $or across fields for a non-empty term.
@@ -123,6 +143,7 @@ func (cfg entityVersioningConfig[T]) query(c context.Context, params apiutil.Que
 	filter, sortOrder, projection := apiutil.ConvertQueryParams(rest)
 	filter = appendSearchOr(filter, term, cfg.searchFields)
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+	sortOrder = normalizeSort(sortOrder)
 	if len(sortOrder) == 0 && len(cfg.searchFields) > 0 {
 		sortOrder = bson.D{{Key: cfg.searchFields[0], Value: 1}}
 	}
