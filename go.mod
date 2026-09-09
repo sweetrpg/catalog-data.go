@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/stretchr/testify v1.12.1
-	github.com/sweetrpg/api-core.go v0.2.0
+	github.com/sweetrpg/api-core.go v0.3.1
 	github.com/sweetrpg/catalog-objects.go v0.6.0
 	github.com/sweetrpg/common.go v0.0.16
 	github.com/sweetrpg/model-core.go v0.1.0
@@ -22,6 +22,7 @@ require (
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
+	github.com/gomodule/redigo v1.9.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/klauspost/compress v1.18.4 // indirect
