@@ -17,7 +17,7 @@ import (
 func TestSearchParamsPushQueryAndCapToMongo(t *testing.T) {
 	params := searchParams("cele")
 
-	assert.Equal(t, searchResultLimit, params.Limit)
+	assert.Equal(t, 100, params.Limit)
 	if assert.Len(t, params.Filter, 1) {
 		assert.Equal(t, searchTermField, params.Filter[0].Field)
 		assert.Equal(t, []string{"cele"}, params.Filter[0].Value)
