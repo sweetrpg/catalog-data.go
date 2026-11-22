@@ -757,3 +757,16 @@ func migrateEntity[Old any, New any](c context.Context, cfg migrationConfig[Old,
 
 	return migrated, nil
 }
+
+// searchResultLimit caps how many matches a Search* call returns; results come back ordered by
+// the entity's first search field, so the cap keeps the first page of an autocomplete/picker.
+const searchResultLimit = 100
+
+// searchParams is the QueryParams every Search* function runs: a `q` filter (matched across the
+// entity's search fields in Mongo, see appendSearchOr) capped at searchResultLimit.
+func searchParams(query string) apiutil.QueryParams {
+	return apiutil.QueryParams{
+		Limit:  searchResultLimit,
+		Filter: []apiutil.Filter{{Field: searchTermField, Value: []string{query}}},
+	}
+}
