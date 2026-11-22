@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"net/url"
-	"strings"
 	"time"
 
 	apiutil "github.com/sweetrpg/api-core.go/util"
@@ -205,22 +204,10 @@ func CountStudios(c context.Context, params apiutil.QueryParams) (int64, error) 
 	return studioVersioning.count(c, params)
 }
 
-// SearchStudios finds live studios whose name contains query (case-insensitive), scanning the
-// full collection - see data.SearchPersons for why this scans in memory rather than pushing the
-// match down to Mongo.
+// SearchStudios finds live studios whose name contains query (case-insensitive). The match
+// runs in Mongo via QueryStudios' `q` filter, capped at searchResultLimit.
 func SearchStudios(c context.Context, query string) ([]*vo.StudioVO, error) {
-	all, err := QueryStudios(c, apiutil.QueryParams{Limit: searchScanLimit})
-	if err != nil {
-		return nil, err
-	}
-	needle := strings.ToLower(query)
-	matches := make([]*vo.StudioVO, 0, len(all))
-	for _, s := range all {
-		if strings.Contains(strings.ToLower(s.Name), needle) {
-			matches = append(matches, s)
-		}
-	}
-	return matches, nil
+	return QueryStudios(c, searchParams(query))
 }
 
 // CreateSubmittedStudioVersion creates a submitted version stamped with a caller-supplied

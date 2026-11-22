@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	apiutil "github.com/sweetrpg/api-core.go/util"
@@ -203,30 +202,10 @@ func CountPersons(c context.Context, params apiutil.QueryParams) (int64, error) 
 	return personVersioning.count(c, params)
 }
 
-// searchScanLimit bounds how many live persons SearchPersons scans in memory - name isn't a
-// field on personMetaCollection (it only lives on the version document QueryPersons resolves
-// per-meta), so there's no index-backed way to push a substring match down to Mongo without a
-// denormalization this doesn't attempt yet. High enough to cover the whole collection at its
-// current size (low hundreds) with room to grow; revisit if persons ever reaches this scale.
-const searchScanLimit = 5000
-
-// SearchPersons finds live persons whose name contains query (case-insensitive), scanning the
-// full collection rather than just whatever page a plain QueryPersons call would return -
-// backs catalog-api's /persons/search route, used by autocomplete/picker inputs instead of the
-// page-capped list-and-filter-client-side approach every other picker used before this existed.
+// SearchPersons finds live persons whose name contains query (case-insensitive). The match
+// runs in Mongo via QueryPersons' `q` filter, capped at searchResultLimit.
 func SearchPersons(c context.Context, query string) ([]*vo.PersonVO, error) {
-	all, err := QueryPersons(c, apiutil.QueryParams{Limit: searchScanLimit})
-	if err != nil {
-		return nil, err
-	}
-	needle := strings.ToLower(query)
-	matches := make([]*vo.PersonVO, 0, len(all))
-	for _, p := range all {
-		if strings.Contains(strings.ToLower(p.Name), needle) {
-			matches = append(matches, p)
-		}
-	}
-	return matches, nil
+	return QueryPersons(c, searchParams(query))
 }
 
 // CreateSubmittedPersonVersion creates a submitted version stamped with a caller-supplied
