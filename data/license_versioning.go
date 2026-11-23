@@ -10,7 +10,6 @@ import (
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	modelcore "github.com/sweetrpg/model-core.go/models"
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
-	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 )
 
 const (
@@ -95,11 +94,9 @@ func flattenLicense(meta *models.EntityMeta, version *models.LicenseVersion) *vo
 		Status: version.Status, Availability: version.Availability, Notes: version.Notes,
 		Properties: modelcoreutil.FromPropertyModels(version.Properties),
 		Tags:       modelcoreutil.FromTagModels(version.Tags),
-		AuditableVO: modelcorevo.AuditableVO{
-			CreatedAt: meta.CreatedAt, CreatedBy: meta.CreatedBy,
-			UpdatedAt: meta.UpdatedAt, UpdatedBy: meta.UpdatedBy,
-			DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
-		},
+		CreatedAt:  meta.CreatedAt, CreatedBy: meta.CreatedBy,
+		UpdatedAt: meta.UpdatedAt, UpdatedBy: meta.UpdatedBy,
+		DeletedAt: meta.DeletedAt, DeletedBy: meta.DeletedBy,
 	}
 }
 

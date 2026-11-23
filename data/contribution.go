@@ -11,7 +11,6 @@ import (
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
 	modelcore "github.com/sweetrpg/model-core.go/models"
-	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -54,18 +53,16 @@ func contributionModelToVO(c context.Context, model *models.Contribution) *vo.Co
 	}
 
 	return &vo.ContributionVO{
-		ID:     model.ID,
-		Person: personVO,
-		Volume: volumeVO,
-		Role:   model.Role,
-		AuditableVO: modelcorevo.AuditableVO{
-			CreatedAt: model.CreatedAt,
-			CreatedBy: model.CreatedBy,
-			UpdatedAt: model.UpdatedAt,
-			UpdatedBy: model.UpdatedBy,
-			DeletedAt: model.DeletedAt,
-			DeletedBy: model.DeletedBy,
-		},
+		ID:        model.ID,
+		Person:    personVO,
+		Volume:    volumeVO,
+		Role:      model.Role,
+		CreatedAt: model.CreatedAt,
+		CreatedBy: model.CreatedBy,
+		UpdatedAt: model.UpdatedAt,
+		UpdatedBy: model.UpdatedBy,
+		DeletedAt: model.DeletedAt,
+		DeletedBy: model.DeletedBy,
 	}
 }
 

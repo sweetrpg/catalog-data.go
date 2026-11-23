@@ -1,4 +1,12 @@
 
+## 0.20.3 - 2026-11-23
+
+### Fixed
+- Set audit fields directly on catalog value objects
+- Bump catalog-objects.go to v0.6.1
+
+
+
 ## 0.20.2 - 2026-11-22
 
 ### Fixed
