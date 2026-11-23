@@ -5,7 +5,7 @@ go 1.26.10
 require (
 	github.com/stretchr/testify v1.12.1
 	github.com/sweetrpg/api-core.go v0.3.1
-	github.com/sweetrpg/catalog-objects.go v0.6.1-0.20261123211149-7858e1043cc3
+	github.com/sweetrpg/catalog-objects.go v0.6.1
 	github.com/sweetrpg/common.go v0.0.16
 	github.com/sweetrpg/model-core.go v0.1.0
 	github.com/sweetrpg/mongodb.go v0.0.193
