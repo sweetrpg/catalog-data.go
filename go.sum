@@ -19,6 +19,8 @@ github.com/gomodule/redigo v1.9.3 h1:dNPSXeXv6HCq2jdyWfjgmhBdqnR6PRO3m/G05nvpPC8
 github.com/gomodule/redigo v1.9.3/go.mod h1:KsU3hiK/Ay8U42qpaJk+kuNa3C+spxapWpM+ywhcgtw=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
+github.com/google/jsonapi v1.0.0 h1:qIGgO5Smu3yJmSs+QlvhQnrscdZfFhiV6S8ryJAglqU=
+github.com/google/jsonapi v1.0.0/go.mod h1:YYHiRPJT8ARXGER8In9VuLv4qvLfDmA9ULQqptbLE4s=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 h1:5VipnvEpbqr2gA2VbM+nYVbkIF28c5ZQfqCBQ5g2xfk=
@@ -31,8 +33,8 @@ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWD
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 github.com/sweetrpg/api-core.go v0.3.1 h1:Fa0dzFjoohTGLt182pO55kksScGNKi6nFHRij/68GTw=
 github.com/sweetrpg/api-core.go v0.3.1/go.mod h1:Li4x24U0q67096dbvOm1Fuq/xOMG1elcgiuJAV8WTJA=
-github.com/sweetrpg/catalog-objects.go v0.6.0 h1:1yWzmcfOrMWF8GC4lYsq6165FNeR4ZYY+bmGlk1xuzc=
-github.com/sweetrpg/catalog-objects.go v0.6.0/go.mod h1:qwB2oluVsq8WSdnZHQTAZ5Z3ZeYrLkimVZPT/jilDs4=
+github.com/sweetrpg/catalog-objects.go v0.6.1 h1:Bk4nDF2Fs9WgJKgTU+0qYelIWZIVHBm6zsp8PcxBZt4=
+github.com/sweetrpg/catalog-objects.go v0.6.1/go.mod h1:CcDeIiB7lywiRfjGwnn+cnl/DKDlZZRPhrDF4PvSCnw=
 github.com/sweetrpg/common.go v0.0.16 h1:XT8PwUXz0BOMIITXLjw3G6rEjjRUEs0Xs4+R9o2fVBk=
 github.com/sweetrpg/common.go v0.0.16/go.mod h1:PVpjDIeB/bZYJZk5fc8whuqVJE8K5k/DsO3o+aZFEcE=
 github.com/sweetrpg/model-core.go v0.1.0 h1:ac8kdyj7oLN706JYyUvMB4T0HRkq9gmzObn3YMUTqCo=
