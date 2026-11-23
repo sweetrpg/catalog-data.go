@@ -6,7 +6,6 @@ import (
 
 	"github.com/sweetrpg/catalog-data.go/gamesystems"
 	"github.com/sweetrpg/catalog-objects.go/vo"
-	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 )
 
 // GameSystemsClient resolves system references against game-systems-api, the system of record
@@ -30,11 +29,9 @@ func GetSystem(c context.Context, id string) (*vo.SystemVO, error) {
 	}
 	return &vo.SystemVO{
 		ID: system.ID, GameSystem: system.Name, Edition: system.Edition, Notes: system.Notes,
-		Tags: system.Tags,
-		AuditableVO: modelcorevo.AuditableVO{
-			CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
-			UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
-		},
+		Tags:      system.Tags,
+		CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
+		UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
 	}, nil
 }
 
@@ -53,11 +50,9 @@ func QuerySystems(c context.Context) ([]*vo.SystemVO, error) {
 	for i, system := range systems {
 		vos[i] = &vo.SystemVO{
 			ID: system.ID, GameSystem: system.Name, Edition: system.Edition, Notes: system.Notes,
-			Tags: system.Tags,
-			AuditableVO: modelcorevo.AuditableVO{
-				CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
-				UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
-			},
+			Tags:      system.Tags,
+			CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
+			UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
 		}
 	}
 	return vos, nil
@@ -97,11 +92,9 @@ func GetSystemsMap(c context.Context) (map[string]*vo.SystemVO, error) {
 	for _, system := range systems {
 		m[system.ID] = &vo.SystemVO{
 			ID: system.ID, GameSystem: system.Name, Edition: system.Edition, Notes: system.Notes,
-			Tags: system.Tags,
-			AuditableVO: modelcorevo.AuditableVO{
-				CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
-				UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
-			},
+			Tags:      system.Tags,
+			CreatedAt: system.CreatedAt, CreatedBy: system.CreatedBy,
+			UpdatedAt: system.UpdatedAt, UpdatedBy: system.UpdatedBy,
 		}
 	}
 	return m, nil

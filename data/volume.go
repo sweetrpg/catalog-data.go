@@ -11,7 +11,6 @@ import (
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
 	modelcoreutil "github.com/sweetrpg/model-core.go/util"
-	modelcorevo "github.com/sweetrpg/model-core.go/vo"
 	"github.com/sweetrpg/mongodb.go/database"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -314,14 +313,12 @@ func flattenVolume(c context.Context, meta *models.VolumeMeta, version *models.V
 		Licenses:       licenses,
 		Properties:     modelcoreutil.FromPropertyModels(version.Properties),
 		Tags:           modelcoreutil.FromTagModels(version.Tags),
-		AuditableVO: modelcorevo.AuditableVO{
-			CreatedAt: meta.CreatedAt,
-			CreatedBy: meta.CreatedBy,
-			UpdatedAt: meta.UpdatedAt,
-			UpdatedBy: meta.UpdatedBy,
-			DeletedAt: meta.DeletedAt,
-			DeletedBy: meta.DeletedBy,
-		},
+		CreatedAt:      meta.CreatedAt,
+		CreatedBy:      meta.CreatedBy,
+		UpdatedAt:      meta.UpdatedAt,
+		UpdatedBy:      meta.UpdatedBy,
+		DeletedAt:      meta.DeletedAt,
+		DeletedBy:      meta.DeletedBy,
 	}
 }
 
