@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"net/url"
-	"strings"
 	"time"
 
 	apiutil "github.com/sweetrpg/api-core.go/util"
@@ -217,22 +216,10 @@ func CountLicenses(c context.Context, params apiutil.QueryParams) (int64, error)
 	return licenseVersioning.count(c, params)
 }
 
-// SearchLicenses finds live licenses whose title contains query (case-insensitive), scanning the
-// full collection - see data.SearchPersons for why this scans in memory rather than pushing the
-// match down to Mongo.
+// SearchLicenses finds live licenses whose title contains query (case-insensitive). The match
+// runs in Mongo via QueryLicenses' `q` filter, capped at searchResultLimit.
 func SearchLicenses(c context.Context, query string) ([]*vo.LicenseVO, error) {
-	all, err := QueryLicenses(c, apiutil.QueryParams{Limit: searchScanLimit})
-	if err != nil {
-		return nil, err
-	}
-	needle := strings.ToLower(query)
-	matches := make([]*vo.LicenseVO, 0, len(all))
-	for _, l := range all {
-		if strings.Contains(strings.ToLower(l.Title), needle) {
-			matches = append(matches, l)
-		}
-	}
-	return matches, nil
+	return QueryLicenses(c, searchParams(query))
 }
 
 // CreateSubmittedLicenseVersion creates a submitted version stamped with a caller-supplied

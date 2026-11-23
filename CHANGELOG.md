@@ -1,4 +1,11 @@
 
+## 0.20.2 - 2026-11-22
+
+### Fixed
+- Push entity search matching into Mongo
+
+
+
 ## 0.20.1 - 2026-09-09
 
 ### Fixed
