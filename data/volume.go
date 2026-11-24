@@ -394,6 +394,10 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
 	filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+	filter, err := excludeSoftDeleted(c, volumeMetaCollection, filter)
+	if err != nil {
+		return nil, err
+	}
 	sort = normalizeSort(sort)
 	if len(sort) == 0 {
 		// Without an explicit sort, Mongo returns natural (insertion) order - stable for an
@@ -435,13 +439,10 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 	return vos, nil
 }
 
-// CountVolumes returns how many live volume versions match params' filter - the same `q` $or
-// expansion (title/description/tag values) and any `filter[...][contains]` clauses QueryVolumes
-// applies, plus `state: live` - via a driver CountDocuments. No documents, no sort, no page
-// window. Backs catalog-api's list-response `meta.total`. Like GetCatalogStats it counts on the
-// version collection without joining volume meta, so a volume whose meta is soft-deleted but
-// whose live version still exists is counted (QueryVolumes' per-row meta check would drop it);
-// acceptable for a browse-pager total, matching the stats path's existing behavior.
+// CountVolumes returns how many live, non-soft-deleted volumes match params' filter - the same
+// `q` $or expansion (title/description/tag values), `filter[...][contains]` clauses, and
+// soft-deleted exclusion QueryVolumes applies - via a driver CountDocuments. No documents, no
+// sort, no page window. Backs catalog-api's list-response `meta.total`.
 func CountVolumes(c context.Context, params apiutil.QueryParams) (int64, error) {
 	span := tracing.BuildSpanWithParams(c, "volumes", "db-count-volumes", params)
 	defer span.End()
@@ -450,6 +451,10 @@ func CountVolumes(c context.Context, params apiutil.QueryParams) (int64, error) 
 	filter, _, _ := apiutil.ConvertQueryParams(rest)
 	filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+	filter, err := excludeSoftDeleted(c, volumeMetaCollection, filter)
+	if err != nil {
+		return 0, err
+	}
 
 	return database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
 }
@@ -473,7 +478,10 @@ func GetCatalogStats(c context.Context) (*CatalogStats, error) {
 	span := tracing.BuildSpanWithParams(c, "volumes", "db-get-catalog-stats", apiutil.QueryParams{})
 	defer span.End()
 
-	filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
+	filter, err := liveVersionFilter(c, volumeMetaCollection)
+	if err != nil {
+		return nil, err
+	}
 
 	count, err := database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
 	if err != nil {
@@ -501,7 +509,8 @@ func GetCatalogStats(c context.Context) (*CatalogStats, error) {
 	return stats, nil
 }
 
-// GetVolumeTypeStats returns the volumes landing-page-summary card's count/most-recent data -
+// GetVolumeTypeStats returns the volumes landing-page-summary card's count/most-recent data (live,
+// non-soft-deleted volumes; most recent = last created) -
 // TypeStats-shaped like the other five entity types' Get*Stats (catalog-landing-page-summary),
 // but implemented directly against volumeVersionCollection rather than entityVersioningConfig
 // since Volume isn't on that shared engine (see entity_versioning.go's own doc comment).
@@ -509,30 +518,7 @@ func GetVolumeTypeStats(c context.Context) (*TypeStats, error) {
 	span := tracing.BuildSpanWithParams(c, "volumes", "db-get-volume-type-stats", apiutil.QueryParams{})
 	defer span.End()
 
-	filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
-
-	count, err := database.Db.Collection(volumeVersionCollection).CountDocuments(c, filter)
-	if err != nil {
-		return nil, fmt.Errorf("volume: count live versions: %w", err)
-	}
-
-	stats := &TypeStats{Count: int(count)}
-	if stats.Count == 0 {
-		return stats, nil
-	}
-
-	sortOrder := bson.D{{Key: "submitted_at", Value: -1}}
-	recent, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sortOrder, nil, 0, 1)
-	if err != nil {
-		return nil, fmt.Errorf("volume: query most recent version: %w", err)
-	}
-	if len(recent) == 0 {
-		return stats, nil
-	}
-
-	submittedAt := recent[0].SubmittedAt
-	stats.LastUpdated = &submittedAt
-	stats.MostRecentID = recent[0].RecordID
-	stats.MostRecentName = recent[0].Title
-	return stats, nil
+	return newestRecordStats(c, volumeMetaCollection, volumeVersionCollection, "volume", func(v *models.VolumeVersion) (time.Time, string) {
+		return v.SubmittedAt, v.Title
+	})
 }

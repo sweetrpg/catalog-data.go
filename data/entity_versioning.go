@@ -138,8 +138,8 @@ type metaVersion[T any] struct {
 }
 
 // query lists the current (live) version of every record matching params, excluding
-// soft-deleted records. Mirrors QueryVolumes: the filter, sort, and page window push down to
-// the version collection, then each row's meta is joined to drop soft-deleted records. A `q`
+// soft-deleted records. The filter (including the soft-deleted exclusion), sort, and page window
+// all push down to the version collection, so a page is full and agrees with count. A `q`
 // filter param becomes a case-insensitive $or across cfg.searchFields; with no explicit sort,
 // results order by searchFields[0].
 func (cfg entityVersioningConfig[T]) query(c context.Context, params apiutil.QueryParams) ([]metaVersion[T], error) {
@@ -147,6 +147,10 @@ func (cfg entityVersioningConfig[T]) query(c context.Context, params apiutil.Que
 	filter, sortOrder, projection := apiutil.ConvertQueryParams(rest)
 	filter = appendSearchOr(filter, term, cfg.searchFields)
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+	filter, err := excludeSoftDeleted(c, cfg.metaCollection, filter)
+	if err != nil {
+		return nil, err
+	}
 	sortOrder = normalizeSort(sortOrder)
 	if len(sortOrder) == 0 && len(cfg.searchFields) > 0 {
 		sortOrder = bson.D{{Key: cfg.searchFields[0], Value: 1}}
@@ -171,18 +175,19 @@ func (cfg entityVersioningConfig[T]) query(c context.Context, params apiutil.Que
 	return out, nil
 }
 
-// count returns how many live version records match params' filter - the same `q` $or
-// expansion over cfg.searchFields and any `filter[...][contains]` clauses query() applies, plus
-// `state: live` - via a driver CountDocuments. No documents, no sort, no page window. Backs
-// catalog-api's list-response `meta.total`. Like stats() it counts on the version collection
-// without joining meta, so a record whose meta is soft-deleted but whose live version still
-// exists is counted (query()'s per-row meta check would drop it); acceptable for a browse-pager
-// total, matching stats()'s existing behavior.
+// count returns how many live, non-soft-deleted records match params' filter - the same `q` $or
+// expansion over cfg.searchFields, `filter[...][contains]` clauses, and soft-deleted exclusion
+// query() applies - via a driver CountDocuments. No documents, no sort, no page window. Backs
+// catalog-api's list-response `meta.total`.
 func (cfg entityVersioningConfig[T]) count(c context.Context, params apiutil.QueryParams) (int64, error) {
 	term, rest := extractSearchTerm(params)
 	filter, _, _ := apiutil.ConvertQueryParams(rest)
 	filter = appendSearchOr(filter, term, cfg.searchFields)
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
+	filter, err := excludeSoftDeleted(c, cfg.metaCollection, filter)
+	if err != nil {
+		return 0, err
+	}
 	return database.Db.Collection(cfg.versionCollection).CountDocuments(c, filter)
 }
 
@@ -196,40 +201,13 @@ type TypeStats struct {
 	MostRecentName string
 }
 
-// stats computes a TypeStats over cfg's live version collection - a driver-level CountDocuments
-// for the count (was `len(unlimited Query(...))`, which pulled every live document over the wire
-// just to count them - fine at hobby-catalog scale, not once a bulk import inflates a collection)
-// plus sorted-descending-limit-1 for the most recent record (design.md's decision: necessary
-// anyway since "most recent" needs the specific record, not just a max timestamp, unlike
-// GetCatalogStats' volume-only precedent). Both queries share the state+submitted_at index
-// ensureIndexes creates below.
+// stats computes a TypeStats over cfg's live, non-soft-deleted records: a driver-level
+// CountDocuments plus the most recently created record (meta created_at, descending, limit 1) -
+// "most recent" is the last record added, not the last one edited. See newestRecordStats.
 func (cfg entityVersioningConfig[T]) stats(c context.Context) (*TypeStats, error) {
-	filter := bson.D{{Key: "state", Value: string(models.VersionStateLive)}}
-
-	count, err := database.Db.Collection(cfg.versionCollection).CountDocuments(c, filter)
-	if err != nil {
-		return nil, fmt.Errorf("%s: count live versions: %w", cfg.typeName, err)
-	}
-
-	stats := &TypeStats{Count: int(count)}
-	if stats.Count == 0 {
-		return stats, nil
-	}
-
-	sortOrder := bson.D{{Key: "submitted_at", Value: -1}}
-	recent, err := database.Query[T](cfg.versionCollection, filter, sortOrder, nil, 0, 1)
-	if err != nil {
-		return nil, fmt.Errorf("%s: query most recent version: %w", cfg.typeName, err)
-	}
-	if len(recent) == 0 {
-		return stats, nil
-	}
-
-	submittedAt := cfg.lifecycle(recent[0]).SubmittedAt
-	stats.LastUpdated = &submittedAt
-	stats.MostRecentID = cfg.recordID(recent[0])
-	stats.MostRecentName = cfg.displayName(recent[0])
-	return stats, nil
+	return newestRecordStats(c, cfg.metaCollection, cfg.versionCollection, cfg.typeName, func(v *T) (time.Time, string) {
+		return cfg.lifecycle(v).SubmittedAt, cfg.displayName(v)
+	})
 }
 
 func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error {
@@ -254,6 +232,12 @@ func (cfg entityVersioningConfig[T]) ensureIndexes(c context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("%s: create state+submitted_at index: %w", cfg.typeName, err)
+	}
+	// Backs stats()'s newest-record lookup and the soft-deleted-id scan on the meta collection.
+	if _, err := database.Db.Collection(cfg.metaCollection).Indexes().CreateOne(c, mongo.IndexModel{
+		Keys: bson.D{{Key: "deleted_at", Value: 1}, {Key: "created_at", Value: -1}},
+	}); err != nil {
+		return fmt.Errorf("%s: create meta deleted_at+created_at index: %w", cfg.typeName, err)
 	}
 	// One index per search field so an exact/anchored filter (or the default searchFields[0]
 	// sort) on it is index-backed. An unanchored contains $regex can't use these efficiently -
