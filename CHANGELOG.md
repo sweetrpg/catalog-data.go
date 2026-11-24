@@ -1,4 +1,12 @@
 
+## 0.20.4 - 2026-11-24
+
+### Fixed
+- Exclude soft-deleted records from list totals, pages, and stats
+- Pick the newest record with a live version for stats
+
+
+
 ## 0.20.3 - 2026-11-23
 
 ### Fixed
