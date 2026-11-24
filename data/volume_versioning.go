@@ -52,6 +52,13 @@ func EnsureVolumeVersioningIndexes(ctx context.Context) error {
 		return fmt.Errorf("volumes: create state+submitted_at index: %w", err)
 	}
 
+	// Backs the newest-record lookup and soft-deleted-id scan on the meta collection.
+	if _, err := database.Db.Collection(volumeMetaCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "deleted_at", Value: 1}, {Key: "created_at", Value: -1}},
+	}); err != nil {
+		return fmt.Errorf("volumes: create meta deleted_at+created_at index: %w", err)
+	}
+
 	// One index per field QueryVolumes' `q` search ORs over. An unanchored contains $regex
 	// can't use these efficiently - see design.md's "Index every field a contains filter can
 	// target" (indexed anyway so an exact/anchored filter on the same field stays cheap).
