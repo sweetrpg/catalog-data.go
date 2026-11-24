@@ -199,7 +199,7 @@ func (suite *SoftDeleteCountsTestSuite) TestVolumeStatsSkipNewestRecordWithoutLi
 // every time.
 func (suite *SoftDeleteCountsTestSuite) TestStatsMostRecentTieBreaksOnRecordID() {
 	ctx := suite.T().Context()
-	ids := suite.addStudios("sdc10 First", "sdc10 Second")
+	ids := suite.addStudios("sdctie First", "sdctie Second")
 	tied := nextPinnedTime()
 	for _, id := range ids {
 		suite.setCreatedAt(studioVersioning.metaCollection, id, tied)
@@ -211,7 +211,7 @@ func (suite *SoftDeleteCountsTestSuite) TestStatsMostRecentTieBreaksOnRecordID()
 		assert.Equal(suite.T(), want, stats.MostRecentID)
 	}
 
-	vids := suite.addVolumes("sdc10 First", "sdc10 Second")
+	vids := suite.addVolumes("sdctie First", "sdctie Second")
 	tied = nextPinnedTime()
 	for _, id := range vids {
 		suite.setCreatedAt(volumeMetaCollection, id, tied)
