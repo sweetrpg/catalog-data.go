@@ -12,6 +12,7 @@ import (
 	"github.com/sweetrpg/common.go/logging"
 	dbconstants "github.com/sweetrpg/mongodb.go/constants"
 	"github.com/sweetrpg/mongodb.go/database"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 // SoftDeleteCountsTestSuite covers catalog-entity-browse's list-total and page requirements and
@@ -134,6 +135,42 @@ func (suite *SoftDeleteCountsTestSuite) TestStudioStatsMostRecentIsLastCreatedNo
 	assert.Equal(suite.T(), ids[1], stats.MostRecentID)
 	assert.Equal(suite.T(), "sdc5 Newer", stats.MostRecentName)
 	assert.NotNil(suite.T(), stats.LastUpdated)
+}
+
+// The newest record exists but its only version is pending review, so it is neither counted nor
+// shown as "most recent".
+func (suite *SoftDeleteCountsTestSuite) TestStudioStatsSkipNewestRecordWithoutLiveVersion() {
+	ctx := suite.T().Context()
+	before, err := GetStudioStats(ctx)
+	assert.NoError(suite.T(), err)
+	live := suite.addStudios("sdc8 Live")[0]
+	pending := suite.addStudios("sdc8 Pending")[0] // newest
+	assert.NoError(suite.T(), studioVersioning.setVersionState(ctx, pending, 1,
+		bson.D{{Key: "state", Value: string(models.VersionStateSubmitted)}}))
+
+	after, err := GetStudioStats(ctx)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), before.Count+1, after.Count)
+	assert.Equal(suite.T(), live, after.MostRecentID)
+	assert.Equal(suite.T(), "sdc8 Live", after.MostRecentName)
+	assert.NotNil(suite.T(), after.LastUpdated)
+}
+
+func (suite *SoftDeleteCountsTestSuite) TestVolumeStatsSkipNewestRecordWithoutLiveVersion() {
+	ctx := suite.T().Context()
+	before, err := GetVolumeTypeStats(ctx)
+	assert.NoError(suite.T(), err)
+	ids := suite.addVolumes("sdc9 Live", "sdc9 Pending")
+	_, err = database.Db.Collection(volumeVersionCollection).UpdateOne(ctx,
+		bson.D{{Key: "record_id", Value: ids[1]}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: "state", Value: string(models.VersionStateSubmitted)}}}})
+	assert.NoError(suite.T(), err)
+
+	after, err := GetVolumeTypeStats(ctx)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), before.Count+1, after.Count)
+	assert.Equal(suite.T(), ids[0], after.MostRecentID)
+	assert.Equal(suite.T(), "sdc9 Live", after.MostRecentName)
 }
 
 func volumeTitles(rows []*vo.VolumeVO) []string {

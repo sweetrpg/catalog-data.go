@@ -8,6 +8,7 @@ import (
 	"github.com/sweetrpg/catalog-objects.go/models"
 	"github.com/sweetrpg/mongodb.go/database"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // Soft deletion lives on a record's meta document (deleted_at), while list, count, and stats
@@ -46,11 +47,11 @@ func liveVersionFilter(c context.Context, metaCollection string) (bson.D, error)
 }
 
 // newestRecordStats builds a TypeStats for one entity type: count of live, non-deleted records,
-// plus the most recently created non-deleted record (meta created_at), described by its live
-// version. describe returns the version's submitted-at time and display name; recordID is the
-// version's record_id. A record whose live version is missing leaves the recent fields empty.
+// plus the most recently created one (meta created_at) that has a live version. A newer record
+// with no live version (pending review, rejected) is skipped. The join, sort and limit 1 run in
+// Mongo. describe returns a live version's submitted-at time, record ID and display name.
 func newestRecordStats[T any](c context.Context, metaCollection, versionCollection, typeName string,
-	describe func(*T) (submittedAt time.Time, name string)) (*TypeStats, error) {
+	describe func(*T) (submittedAt time.Time, recordID, name string)) (*TypeStats, error) {
 
 	filter, err := liveVersionFilter(c, metaCollection)
 	if err != nil {
@@ -65,27 +66,31 @@ func newestRecordStats[T any](c context.Context, metaCollection, versionCollecti
 		return stats, nil
 	}
 
-	newest, err := database.Query[metaRef](metaCollection,
-		bson.D{{Key: "deleted_at", Value: nil}},
-		bson.D{{Key: "created_at", Value: -1}}, bson.D{{Key: "_id", Value: 1}}, 0, 1)
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: filter}},
+		{{Key: "$lookup", Value: bson.D{
+			{Key: "from", Value: metaCollection}, {Key: "localField", Value: "record_id"},
+			{Key: "foreignField", Value: "_id"}, {Key: "as", Value: "meta"},
+		}}},
+		{{Key: "$unwind", Value: "$meta"}},
+		{{Key: "$sort", Value: bson.D{{Key: "meta.created_at", Value: -1}}}},
+		{{Key: "$limit", Value: 1}},
+		{{Key: "$project", Value: bson.D{{Key: "meta", Value: 0}}}},
+	}
+	cur, err := database.Db.Collection(versionCollection).Aggregate(c, pipeline)
 	if err != nil {
-		return nil, fmt.Errorf("%s: query newest record: %w", typeName, err)
+		return nil, fmt.Errorf("%s: query newest live record: %w", typeName, err)
+	}
+	var newest []T
+	if err := cur.All(c, &newest); err != nil {
+		return nil, fmt.Errorf("%s: decode newest live record: %w", typeName, err)
 	}
 	if len(newest) == 0 {
 		return stats, nil
 	}
-	live, err := database.Query[T](versionCollection,
-		bson.D{{Key: "record_id", Value: newest[0].ID}, {Key: "state", Value: string(models.VersionStateLive)}},
-		nil, nil, 0, 1)
-	if err != nil {
-		return nil, fmt.Errorf("%s: query newest record's live version: %w", typeName, err)
-	}
-	if len(live) == 0 {
-		return stats, nil
-	}
-	submittedAt, name := describe(live[0])
+	submittedAt, recordID, name := describe(&newest[0])
 	stats.LastUpdated = &submittedAt
-	stats.MostRecentID = newest[0].ID
+	stats.MostRecentID = recordID
 	stats.MostRecentName = name
 	return stats, nil
 }

@@ -205,8 +205,8 @@ type TypeStats struct {
 // CountDocuments plus the most recently created record (meta created_at, descending, limit 1) -
 // "most recent" is the last record added, not the last one edited. See newestRecordStats.
 func (cfg entityVersioningConfig[T]) stats(c context.Context) (*TypeStats, error) {
-	return newestRecordStats(c, cfg.metaCollection, cfg.versionCollection, cfg.typeName, func(v *T) (time.Time, string) {
-		return cfg.lifecycle(v).SubmittedAt, cfg.displayName(v)
+	return newestRecordStats(c, cfg.metaCollection, cfg.versionCollection, cfg.typeName, func(v *T) (time.Time, string, string) {
+		return cfg.lifecycle(v).SubmittedAt, cfg.recordID(v), cfg.displayName(v)
 	})
 }
 

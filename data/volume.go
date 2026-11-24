@@ -518,7 +518,7 @@ func GetVolumeTypeStats(c context.Context) (*TypeStats, error) {
 	span := tracing.BuildSpanWithParams(c, "volumes", "db-get-volume-type-stats", apiutil.QueryParams{})
 	defer span.End()
 
-	return newestRecordStats(c, volumeMetaCollection, volumeVersionCollection, "volume", func(v *models.VolumeVersion) (time.Time, string) {
-		return v.SubmittedAt, v.Title
+	return newestRecordStats(c, volumeMetaCollection, volumeVersionCollection, "volume", func(v *models.VolumeVersion) (time.Time, string, string) {
+		return v.SubmittedAt, v.RecordID, v.Title
 	})
 }
