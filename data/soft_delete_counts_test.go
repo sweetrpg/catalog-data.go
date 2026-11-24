@@ -3,6 +3,7 @@ package data
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -31,6 +32,26 @@ func (suite *SoftDeleteCountsTestSuite) SetupTest() {
 	assert.NoError(suite.T(), EnsureVolumeVersioningIndexes(suite.T().Context()))
 }
 
+// pinClock hands out strictly increasing created_at values (1 ms apart, starting an hour ahead of
+// the wall clock so they sort after records other suites left behind). Records added in the same
+// millisecond share a created_at, so tests pin creation order instead of relying on insert timing.
+var pinClock = time.Now().Add(time.Hour).Truncate(time.Millisecond)
+
+func nextPinnedTime() time.Time {
+	pinClock = pinClock.Add(time.Millisecond)
+	return pinClock
+}
+
+func setCreatedAt(t *testing.T, metaCollection, id string, at time.Time) {
+	_, err := database.Db.Collection(metaCollection).UpdateOne(t.Context(),
+		bson.D{{Key: "_id", Value: id}}, bson.D{{Key: "$set", Value: bson.D{{Key: "created_at", Value: at}}}})
+	assert.NoError(t, err)
+}
+
+func (suite *SoftDeleteCountsTestSuite) setCreatedAt(metaCollection, id string, at time.Time) {
+	setCreatedAt(suite.T(), metaCollection, id, at)
+}
+
 func qParams(term string, start int64, limit int) apiutil.QueryParams {
 	return apiutil.QueryParams{
 		Start: start, Limit: limit,
@@ -53,6 +74,7 @@ func (suite *SoftDeleteCountsTestSuite) addStudios(names ...string) []string {
 		id, err := AddStudio(suite.T().Context(), &vo.StudioVO{Name: n})
 		assert.NoError(suite.T(), err)
 		ids[i] = *id
+		suite.setCreatedAt(studioVersioning.metaCollection, ids[i], nextPinnedTime())
 	}
 	return ids
 }
@@ -173,6 +195,32 @@ func (suite *SoftDeleteCountsTestSuite) TestVolumeStatsSkipNewestRecordWithoutLi
 	assert.Equal(suite.T(), "sdc9 Live", after.MostRecentName)
 }
 
+// Two records with the same created_at: the larger record ID (the later insert) is the most recent,
+// every time.
+func (suite *SoftDeleteCountsTestSuite) TestStatsMostRecentTieBreaksOnRecordID() {
+	ctx := suite.T().Context()
+	ids := suite.addStudios("sdctie First", "sdctie Second")
+	tied := nextPinnedTime()
+	for _, id := range ids {
+		suite.setCreatedAt(studioVersioning.metaCollection, id, tied)
+	}
+	want := max(ids[0], ids[1])
+	for range 5 {
+		stats, err := GetStudioStats(ctx)
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), want, stats.MostRecentID)
+	}
+
+	vids := suite.addVolumes("sdctie First", "sdctie Second")
+	tied = nextPinnedTime()
+	for _, id := range vids {
+		suite.setCreatedAt(volumeMetaCollection, id, tied)
+	}
+	vstats, err := GetVolumeTypeStats(ctx)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), max(vids[0], vids[1]), vstats.MostRecentID)
+}
+
 func volumeTitles(rows []*vo.VolumeVO) []string {
 	titles := make([]string, len(rows))
 	for i, r := range rows {
@@ -187,6 +235,7 @@ func (suite *SoftDeleteCountsTestSuite) addVolumes(titles ...string) []string {
 		id, err := AddVolume(suite.T().Context(), &vo.VolumeVO{Title: t})
 		assert.NoError(suite.T(), err)
 		ids[i] = *id
+		suite.setCreatedAt(volumeMetaCollection, ids[i], nextPinnedTime())
 	}
 	return ids
 }

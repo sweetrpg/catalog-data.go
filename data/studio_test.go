@@ -79,6 +79,8 @@ func (suite *StudioDataTestSuite) TestGetStudioStatsReflectsMostRecent() {
 
 	secondID, err := AddStudio(suite.T().Context(), &vo.StudioVO{Name: "Second Studio"})
 	assert.NoError(suite.T(), err)
+	// created_at has millisecond precision; pin it so the new studio is unambiguously newest.
+	setCreatedAt(suite.T(), studioVersioning.metaCollection, *secondID, nextPinnedTime())
 
 	updated, err := GetStudioStats(suite.T().Context())
 	assert.NoError(suite.T(), err)
