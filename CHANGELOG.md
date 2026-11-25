@@ -1,4 +1,11 @@
 
+## 0.20.5 - 2026-11-25
+
+### Fixed
+- Break created_at ties on record ID in stats most-recent
+
+
+
 ## 0.20.4 - 2026-11-24
 
 ### Fixed

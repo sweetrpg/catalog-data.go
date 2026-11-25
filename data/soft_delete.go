@@ -47,7 +47,8 @@ func liveVersionFilter(c context.Context, metaCollection string) (bson.D, error)
 }
 
 // newestRecordStats builds a TypeStats for one entity type: count of live, non-deleted records,
-// plus the most recently created one (meta created_at) that has a live version. A newer record
+// plus the most recently created one (meta created_at, ties broken by the larger record ID, which is
+// the later insert; created_at has only millisecond precision) that has a live version. A newer record
 // with no live version (pending review, rejected) is skipped. The join, sort and limit 1 run in
 // Mongo. describe returns a live version's submitted-at time, record ID and display name.
 func newestRecordStats[T any](c context.Context, metaCollection, versionCollection, typeName string,
@@ -73,7 +74,7 @@ func newestRecordStats[T any](c context.Context, metaCollection, versionCollecti
 			{Key: "foreignField", Value: "_id"}, {Key: "as", Value: "meta"},
 		}}},
 		{{Key: "$unwind", Value: "$meta"}},
-		{{Key: "$sort", Value: bson.D{{Key: "meta.created_at", Value: -1}}}},
+		{{Key: "$sort", Value: bson.D{{Key: "meta.created_at", Value: -1}, {Key: "record_id", Value: -1}}}},
 		{{Key: "$limit", Value: 1}},
 		{{Key: "$project", Value: bson.D{{Key: "meta", Value: 0}}}},
 	}
