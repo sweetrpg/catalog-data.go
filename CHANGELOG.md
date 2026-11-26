@@ -1,4 +1,15 @@
 
+## 0.21.0 - 2026-11-26
+
+### Added
+- Remove and block references to deleted game systems
+
+
+### Documentation
+- Add the feature work checkpoint pointer
+
+
+
 ## 0.20.5 - 2026-11-25
 
 ### Fixed
