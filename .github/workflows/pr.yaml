@@ -50,7 +50,7 @@ jobs:
       - name: start-mongodb
         uses: supercharge/mongodb-github-action@1.12.1
         with:
-          mongodb-version: "7.0"
+          mongodb-version: "8.0"
 
       - name: Test
         env:
@@ -58,4 +58,4 @@ jobs:
           TEST_COLLECTION: unit-tests
           LOG_LEVEL: DEBUG
         run: |
-          go test -race ./...
+          go test -v -race ./...

@@ -26,6 +26,11 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 	_, span := otel.Tracer("volume").Start(c, "db-add-volume", oteltrace.WithAttributes())
 	defer span.End()
 
+	version := volumeVOToVersionFields(volume)
+	if _, err := filterDeletedSystems(c, &version); err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
 	metaID := primitive.NewObjectID().Hex()
 	meta := models.VolumeMeta{
@@ -41,7 +46,6 @@ func AddVolume(c context.Context, volume *vo.VolumeVO) (*string, error) {
 		return nil, err
 	}
 
-	version := volumeVOToVersionFields(volume)
 	version.ID = primitive.NewObjectID().Hex()
 	version.RecordID = metaID
 	version.Version = 1
@@ -105,6 +109,9 @@ func createVolumeVersion(c context.Context, id string, volume *vo.VolumeVO, stat
 
 	baseVersion := meta.CurrentVersion
 	newVersion := volumeVOToVersionFields(volume)
+	if _, err := filterDeletedSystems(c, &newVersion); err != nil {
+		return nil, err
+	}
 	newVersion.ID = primitive.NewObjectID().Hex()
 	newVersion.RecordID = id
 	newVersion.Version = nextVersion
