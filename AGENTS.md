@@ -43,7 +43,7 @@ locally.
 ## Running Checks Locally
 
 ```bash
-docker run --rm -d -p 27017:27017 --name mongodb-test mongo:7.0
+docker run --rm -d -p 27017:27017 --name mongodb-test mongo:8.0
 export TEST_DB_URI="mongodb://localhost:27017/unit-tests"
 export TEST_COLLECTION=unit-tests
 go build -v ./...

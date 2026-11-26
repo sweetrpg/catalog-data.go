@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sort"
 	"time"
 
@@ -40,6 +39,10 @@ func EnsureVolumeVersioningIndexes(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("volumes: create record_id+state index: %w", err)
+	}
+
+	if err := EnsureDeletedSystemIndexes(ctx); err != nil {
+		return fmt.Errorf("volumes: create deleted system indexes: %w", err)
 	}
 
 	// Backs GetVolumeTypeStats/GetCatalogStats' count (state-only equality) and most-recent
@@ -237,7 +240,7 @@ func setVolumeVersionFieldValue(v *models.VolumeVersion, field string, value any
 func volumeVersionChangedFields(submitted, base *models.VolumeVersion) []string {
 	var changed []string
 	for _, field := range volumeVersionSubstantiveFields {
-		if !reflect.DeepEqual(volumeVersionFieldValue(submitted, field), volumeVersionFieldValue(base, field)) {
+		if !sameFieldValue(volumeVersionFieldValue(submitted, field), volumeVersionFieldValue(base, field)) {
 			changed = append(changed, field)
 		}
 	}
@@ -309,6 +312,10 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
 	now := time.Now()
 
 	if selectedFields == nil && *submitted.BaseVersion == meta.CurrentVersion {
+		filtered, err := filterDeletedSystems(c, submitted)
+		if err != nil {
+			return nil, nil, err
+		}
 		if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil {
 			return nil, nil, err
 		}
@@ -326,6 +333,11 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
 		}
 		submitted.StagedCoverAssetId = nil
 		submitted.StagedSampleAssetIds = nil
+		if filtered {
+			update = append(update,
+				bson.E{Key: "system_ids", Value: submitted.SystemIds},
+				bson.E{Key: "system_titles", Value: submitted.SystemTitles})
+		}
 		if liveCoverAssetId != nil {
 			update = append(update, bson.E{Key: "cover_asset_id", Value: *liveCoverAssetId})
 			submitted.CoverAssetId = *liveCoverAssetId
@@ -351,7 +363,15 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
 		return nil, nil, fmt.Errorf("volume %s: base version %d not found", id, *submitted.BaseVersion)
 	}
 
-	changed := volumeVersionChangedFields(submitted, baseVersion)
+	// Filter all three sides: if only current had lost a deleted system, every older
+	// submission would report a false system_ids conflict. These are copies for comparison and
+	// derivation; the stored base and submission aren't rewritten.
+	proposed := *submitted
+	if _, err := filterDeletedSystems(c, &proposed, baseVersion, current); err != nil {
+		return nil, nil, err
+	}
+
+	changed := volumeVersionChangedFields(&proposed, baseVersion)
 	target := changed
 	if selectedFields != nil {
 		target = intersectFields(changed, selectedFields)
@@ -362,11 +382,11 @@ func AcceptVolumeVersion(c context.Context, id string, version int, selectedFiel
 	var conflicts []string
 	var accepted []string
 	for _, field := range target {
-		if !reflect.DeepEqual(volumeVersionFieldValue(current, field), volumeVersionFieldValue(baseVersion, field)) {
+		if !sameFieldValue(volumeVersionFieldValue(current, field), volumeVersionFieldValue(baseVersion, field)) {
 			conflicts = append(conflicts, field)
 			continue
 		}
-		setVolumeVersionFieldValue(&derived, field, volumeVersionFieldValue(submitted, field))
+		setVolumeVersionFieldValue(&derived, field, volumeVersionFieldValue(&proposed, field))
 		accepted = append(accepted, field)
 	}
 
@@ -540,6 +560,15 @@ func SetCurrentVolumeVersion(c context.Context, id string, version int, actingUs
 		return volumeVersionModelToVO(c, target), nil
 	}
 
+	filtered := *target
+	dirty, err := filterDeletedSystems(c, &filtered)
+	if err != nil {
+		return nil, err
+	}
+	if dirty {
+		return makeFilteredCopyCurrent(c, &filtered, meta.CurrentVersion, actingUserID)
+	}
+
 	if err := archiveVolumeVersion(c, id, meta.CurrentVersion); err != nil {
 		return nil, err
 	}
@@ -552,4 +581,17 @@ func SetCurrentVolumeVersion(c context.Context, id string, version int, actingUs
 
 	target.State = models.VersionStateLive
 	return volumeVersionModelToVO(c, target), nil
+}
+
+// makeFilteredCopyCurrent is SetCurrentVolumeVersion for a target that references a deleted
+// system: the target keeps its content, and a copy without the reference becomes current.
+func makeFilteredCopyCurrent(c context.Context, filtered *models.VolumeVersion, currentVersion int, actingUserID string) (*vo.VolumeVersionVO, error) {
+	done, err := replaceCurrentVersion(c, filtered, currentVersion, actingUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !done {
+		return nil, fmt.Errorf("volume %s: current version changed, try again", filtered.RecordID)
+	}
+	return volumeVersionModelToVO(c, filtered), nil
 }
