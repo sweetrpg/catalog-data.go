@@ -275,6 +275,12 @@ func (cfg entityVersioningConfig[T]) getVersion(c context.Context, recordID stri
 	return results[0], nil
 }
 
+// readVersions is the caller-scoped query behind every public version read.
+func (cfg entityVersioningConfig[T]) readVersions(c context.Context, filter bson.D, reader VersionReader, limit int) ([]*T, error) {
+	sortOrder := bson.D{{Key: "version", Value: -1}}
+	return database.Query[T](cfg.versionCollection, reader.scope(filter), sortOrder, nil, 0, limit)
+}
+
 func (cfg entityVersioningConfig[T]) setVersionState(c context.Context, recordID string, version int, fields bson.D) error {
 	filter := bson.D{{Key: "record_id", Value: recordID}, {Key: "version", Value: version}}
 	_, err := database.Db.Collection(cfg.versionCollection).UpdateOne(c, filter, bson.D{{Key: "$set", Value: fields}})
@@ -296,13 +302,6 @@ func (cfg entityVersioningConfig[T]) setMetaCurrentVersion(c context.Context, re
 		}}},
 	)
 	return err
-}
-
-// listVersions returns every version of a record, newest first.
-func (cfg entityVersioningConfig[T]) listVersions(c context.Context, id string) ([]*T, error) {
-	filter := bson.D{{Key: "record_id", Value: id}}
-	sortOrder := bson.D{{Key: "version", Value: -1}}
-	return database.Query[T](cfg.versionCollection, filter, sortOrder, nil, 0, 0)
 }
 
 func (cfg entityVersioningConfig[T]) fieldValue(v *T, field string) any {

@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"go.mongodb.org/mongo-driver/bson"
 	"net/url"
 	"time"
 
@@ -128,26 +129,32 @@ func UpdatePublisher(c context.Context, id string, publisher *vo.PublisherVO, st
 	return publisherVersionToVO(result), nil
 }
 
-// ListPublisherVersions returns every version of a publisher, newest first.
-func ListPublisherVersions(c context.Context, id string) ([]*vo.PublisherVersionVO, error) {
-	versions, err := publisherVersioning.listVersions(c, id)
+// ListPublisherVersions returns the versions of a publisher that reader may see, newest first.
+func ListPublisherVersions(c context.Context, id string, reader VersionReader) ([]*vo.PublisherVersionVO, error) {
+	versions, err := publisherVersioning.readVersions(c, bson.D{{Key: "record_id", Value: id}}, reader, 0)
 	if err != nil {
 		return nil, err
 	}
 	vos := make([]*vo.PublisherVersionVO, 0, len(versions))
 	for _, v := range versions {
-		vos = append(vos, publisherVersionToVO(v))
+		result := publisherVersionToVO(v)
+		reader.redactLifecycle(&result.VersionLifecycleVO)
+		vos = append(vos, result)
 	}
 	return vos, nil
 }
 
-// GetPublisherVersion returns one version's full snapshot, regardless of whether it's current.
-func GetPublisherVersion(c context.Context, id string, version int) (*vo.PublisherVersionVO, error) {
-	result, err := publisherVersioning.getVersion(c, id, version)
-	if err != nil || result == nil {
+// GetPublisherVersion returns one version's snapshot, regardless of whether it's current. It returns
+// nil for a version reader may not see, the same as for one that doesn't exist.
+func GetPublisherVersion(c context.Context, id string, version int, reader VersionReader) (*vo.PublisherVersionVO, error) {
+	filter := bson.D{{Key: "record_id", Value: id}, {Key: "version", Value: version}}
+	versions, err := publisherVersioning.readVersions(c, filter, reader, 1)
+	if err != nil || len(versions) == 0 {
 		return nil, err
 	}
-	return publisherVersionToVO(result), nil
+	result := publisherVersionToVO(versions[0])
+	reader.redactLifecycle(&result.VersionLifecycleVO)
+	return result, nil
 }
 
 // AcceptPublisherVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.

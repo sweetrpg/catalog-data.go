@@ -89,7 +89,7 @@ func (suite *PublisherDataTestSuite) TestAcceptPublisherVersionFullAccept() {
 	// already mutated) - guards against VersionLifecycle's embedded bson fields silently landing
 	// under a nested "versionlifecycle" subdocument instead of being inlined, which would let a
 	// $set-based state transition appear to succeed in-memory while never actually persisting.
-	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version)
+	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), string(models.VersionStateLive), string(refetched.State))
 }
@@ -108,7 +108,7 @@ func (suite *PublisherDataTestSuite) TestRejectPublisherVersion() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "Test Publisher", fetched.Name)
 
-	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version)
+	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), string(models.VersionStateRejected), string(refetched.State))
 	assert.Equal(suite.T(), &note, refetched.ReviewNote)
@@ -125,7 +125,7 @@ func (suite *PublisherDataTestSuite) TestRetractPublisherVersion() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), string(models.VersionStateWithdrawn), string(retracted.State))
 
-	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version)
+	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, submitted.Version, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), string(models.VersionStateWithdrawn), string(refetched.State))
 }
@@ -144,7 +144,7 @@ func (suite *PublisherDataTestSuite) TestSetCurrentPublisherVersion() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "Test Publisher", fetched.Name)
 
-	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, 1)
+	refetched, err := GetPublisherVersion(suite.T().Context(), suite.seedPublisherID, 1, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), string(models.VersionStateLive), string(refetched.State))
 }

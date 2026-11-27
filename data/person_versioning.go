@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"go.mongodb.org/mongo-driver/bson"
 	"time"
 
 	apiutil "github.com/sweetrpg/api-core.go/util"
@@ -121,26 +122,32 @@ func UpdatePerson(c context.Context, id string, person *vo.PersonVO, state model
 	return personVersionToVO(result), nil
 }
 
-// ListPersonVersions returns every version of a person, newest first.
-func ListPersonVersions(c context.Context, id string) ([]*vo.PersonVersionVO, error) {
-	versions, err := personVersioning.listVersions(c, id)
+// ListPersonVersions returns the versions of a person that reader may see, newest first.
+func ListPersonVersions(c context.Context, id string, reader VersionReader) ([]*vo.PersonVersionVO, error) {
+	versions, err := personVersioning.readVersions(c, bson.D{{Key: "record_id", Value: id}}, reader, 0)
 	if err != nil {
 		return nil, err
 	}
 	vos := make([]*vo.PersonVersionVO, 0, len(versions))
 	for _, v := range versions {
-		vos = append(vos, personVersionToVO(v))
+		result := personVersionToVO(v)
+		reader.redactLifecycle(&result.VersionLifecycleVO)
+		vos = append(vos, result)
 	}
 	return vos, nil
 }
 
-// GetPersonVersion returns one version's full snapshot.
-func GetPersonVersion(c context.Context, id string, version int) (*vo.PersonVersionVO, error) {
-	result, err := personVersioning.getVersion(c, id, version)
-	if err != nil || result == nil {
+// GetPersonVersion returns one version's snapshot, regardless of whether it's current. It returns
+// nil for a version reader may not see, the same as for one that doesn't exist.
+func GetPersonVersion(c context.Context, id string, version int, reader VersionReader) (*vo.PersonVersionVO, error) {
+	filter := bson.D{{Key: "record_id", Value: id}, {Key: "version", Value: version}}
+	versions, err := personVersioning.readVersions(c, filter, reader, 1)
+	if err != nil || len(versions) == 0 {
 		return nil, err
 	}
-	return personVersionToVO(result), nil
+	result := personVersionToVO(versions[0])
+	reader.redactLifecycle(&result.VersionLifecycleVO)
+	return result, nil
 }
 
 // AcceptPersonVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.
