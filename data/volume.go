@@ -385,6 +385,10 @@ func volumeVOToVersionFields(volume *vo.VolumeVO) models.VolumeVersion {
 	}
 }
 
+// volumeSearchFields are the fields a volume `q` search ORs over, each backed by an index.
+// Tags match on name: writers leave a tag's value empty.
+var volumeSearchFields = []string{"title", "description", "tags.name"}
+
 // QueryVolumes lists the current (live) version of every volume matching params - the live
 // version's data is exactly today's flat volume shape, since exactly one version per record is
 // ever live at a time.
@@ -395,11 +399,11 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 	defer span.End()
 
 	// A `q` filter param is a browse-page multi-field search: a case-insensitive contains match
-	// ORed across a volume's title, description, and tag values (design.md's "Multi-field
+	// ORed across a volume's title, description, and tag names (design.md's "Multi-field
 	// substring search" decision), rather than a literal `q` field match.
 	term, params := extractSearchTerm(params)
 	filter, sort, projection := apiutil.ConvertQueryParams(params)
-	filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
+	filter = appendSearchOr(filter, term, volumeSearchFields)
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
 	filter, err := excludeSoftDeleted(c, volumeMetaCollection, filter)
 	if err != nil {
@@ -447,7 +451,7 @@ func QueryVolumes(c context.Context, params apiutil.QueryParams) ([]*vo.VolumeVO
 }
 
 // CountVolumes returns how many live, non-soft-deleted volumes match params' filter - the same
-// `q` $or expansion (title/description/tag values), `filter[...][contains]` clauses, and
+// `q` $or expansion (title/description/tag names), `filter[...][contains]` clauses, and
 // soft-deleted exclusion QueryVolumes applies - via a driver CountDocuments. No documents, no
 // sort, no page window. Backs catalog-api's list-response `meta.total`.
 func CountVolumes(c context.Context, params apiutil.QueryParams) (int64, error) {
@@ -456,7 +460,7 @@ func CountVolumes(c context.Context, params apiutil.QueryParams) (int64, error) 
 
 	term, rest := extractSearchTerm(params)
 	filter, _, _ := apiutil.ConvertQueryParams(rest)
-	filter = appendSearchOr(filter, term, []string{"title", "description", "tags.value"})
+	filter = appendSearchOr(filter, term, volumeSearchFields)
 	filter = append(filter, bson.E{Key: "state", Value: string(models.VersionStateLive)})
 	filter, err := excludeSoftDeleted(c, volumeMetaCollection, filter)
 	if err != nil {
