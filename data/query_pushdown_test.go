@@ -12,6 +12,7 @@ import (
 	apiutil "github.com/sweetrpg/api-core.go/util"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"github.com/sweetrpg/common.go/logging"
+	modelcore "github.com/sweetrpg/model-core.go/vo"
 	dbconstants "github.com/sweetrpg/mongodb.go/constants"
 	"github.com/sweetrpg/mongodb.go/database"
 	"go.mongodb.org/mongo-driver/bson"
@@ -164,9 +165,26 @@ func (suite *QueryPushdownTestSuite) TestQueryLicensesTitleContains() {
 	}
 }
 
+// Writers set only a tag's name, so `q` has to match tags.name, in both the query and the count.
+func (suite *QueryPushdownTestSuite) TestQueryVolumesSearchMatchesTagName() {
+	ctx := suite.T().Context()
+	hit, err := AddVolume(ctx, &vo.VolumeVO{Title: "Tagged Volume", Tags: []modelcore.TagVO{{Name: "Qpzz7-Tag"}}})
+	suite.Require().NoError(err)
+
+	params := apiutil.QueryParams{Limit: 200, Filter: []apiutil.Filter{{Field: "q", Value: []string{"qpzz7-tag"}}}}
+	results, err := QueryVolumes(ctx, params)
+	suite.Require().NoError(err)
+	count, err := CountVolumes(ctx, params)
+	suite.Require().NoError(err)
+
+	suite.Require().Len(results, 1)
+	suite.Equal(*hit, results[0].ID)
+	suite.EqualValues(1, count)
+}
+
 // 2.4: each search field has a backing index.
 func (suite *QueryPushdownTestSuite) TestSearchIndexesExist() {
-	for _, field := range []string{"title_1", "description_1", "tags.value_1"} {
+	for _, field := range []string{"title_1", "description_1", "tags.name_1"} {
 		assert.True(suite.T(), suite.indexExists(volumeVersionCollection, field), "volumes: %s", field)
 	}
 	assert.True(suite.T(), suite.indexExists(publisherVersionCollection, "name_1"))
