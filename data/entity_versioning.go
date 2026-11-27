@@ -591,15 +591,13 @@ func (cfg entityVersioningConfig[T]) retractVersion(c context.Context, id string
 	if err != nil {
 		return nil, err
 	}
-	if submitted == nil {
-		return nil, fmt.Errorf("%s %s: version %d not found", cfg.typeName, id, version)
+	// Ownership comes before state, so a refusal says nothing about someone else's version.
+	if submitted == nil || !(VersionReader{UserID: submitterID}).owns(cfg.lifecycle(submitted).SubmittedBy) {
+		return nil, fmt.Errorf("%s %s: version %d: %w", cfg.typeName, id, version, ErrVersionNotFound)
 	}
 	lc := cfg.lifecycle(submitted)
 	if lc.State != models.VersionStateSubmitted {
 		return nil, fmt.Errorf("%s %s: version %d is not submitted", cfg.typeName, id, version)
-	}
-	if lc.SubmittedBy != submitterID {
-		return nil, fmt.Errorf("%s %s: version %d was not submitted by %s", cfg.typeName, id, version, submitterID)
 	}
 	if err := cfg.setVersionState(c, id, version, bson.D{{Key: "state", Value: string(models.VersionStateWithdrawn)}}); err != nil {
 		return nil, err

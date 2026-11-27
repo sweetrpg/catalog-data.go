@@ -523,14 +523,12 @@ func RetractVolumeVersion(c context.Context, id string, version int, submitterID
 	if err != nil {
 		return nil, err
 	}
-	if submitted == nil {
-		return nil, fmt.Errorf("volume %s: version %d not found", id, version)
+	// Ownership comes before state, so a refusal says nothing about someone else's version.
+	if submitted == nil || !(VersionReader{UserID: submitterID}).owns(submitted.SubmittedBy) {
+		return nil, fmt.Errorf("volume %s: version %d: %w", id, version, ErrVersionNotFound)
 	}
 	if submitted.State != models.VersionStateSubmitted {
 		return nil, fmt.Errorf("volume %s: version %d is not submitted (state: %s)", id, version, submitted.State)
-	}
-	if submitted.SubmittedBy != submitterID {
-		return nil, fmt.Errorf("volume %s: version %d was not submitted by %s", id, version, submitterID)
 	}
 
 	if err := setVolumeVersionState(c, id, version, bson.D{

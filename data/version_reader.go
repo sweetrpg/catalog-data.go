@@ -1,10 +1,16 @@
 package data
 
 import (
+	"errors"
+
 	"github.com/sweetrpg/catalog-objects.go/models"
 	"github.com/sweetrpg/catalog-objects.go/vo"
 	"go.mongodb.org/mongo-driver/bson"
 )
+
+// ErrVersionNotFound is returned for a version that doesn't exist, and for one the caller may
+// not act on, so the two can't be told apart.
+var ErrVersionNotFound = errors.New("version not found")
 
 // VersionReader identifies who is reading version records. The zero value is a signed-out
 // reader, so a caller that forgets to fill it in gets the most restricted view.
