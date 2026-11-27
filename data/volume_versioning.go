@@ -135,9 +135,9 @@ func setVolumeMetaCurrentVersion(c context.Context, recordID string, version int
 	return err
 }
 
-// ListVolumeVersions returns every version of a volume, newest first.
-func ListVolumeVersions(c context.Context, id string) ([]*vo.VolumeVersionVO, error) {
-	filter := bson.D{{Key: "record_id", Value: id}}
+// ListVolumeVersions returns the versions of a volume that reader may see, newest first.
+func ListVolumeVersions(c context.Context, id string, reader VersionReader) ([]*vo.VolumeVersionVO, error) {
+	filter := reader.scope(bson.D{{Key: "record_id", Value: id}})
 	sortOrder := bson.D{{Key: "version", Value: -1}}
 	versions, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, sortOrder, nil, 0, 0)
 	if err != nil {
@@ -147,22 +147,28 @@ func ListVolumeVersions(c context.Context, id string) ([]*vo.VolumeVersionVO, er
 
 	vos := make([]*vo.VolumeVersionVO, 0, len(versions))
 	for _, version := range versions {
-		vos = append(vos, volumeVersionModelToVO(c, version))
+		result := volumeVersionModelToVO(c, version)
+		reader.redactVolume(result)
+		vos = append(vos, result)
 	}
 	return vos, nil
 }
 
-// GetVolumeVersion returns one version's full snapshot, regardless of whether it's current.
-func GetVolumeVersion(c context.Context, id string, version int) (*vo.VolumeVersionVO, error) {
-	result, err := getVolumeVersion(c, id, version)
+// GetVolumeVersion returns one version's snapshot, regardless of whether it's current. It
+// returns nil for a version reader may not see, the same as for one that doesn't exist.
+func GetVolumeVersion(c context.Context, id string, version int, reader VersionReader) (*vo.VolumeVersionVO, error) {
+	filter := reader.scope(bson.D{{Key: "record_id", Value: id}, {Key: "version", Value: version}})
+	results, err := database.Query[models.VolumeVersion](volumeVersionCollection, filter, nil, nil, 0, 1)
 	if err != nil {
 		logging.Logger.Error(fmt.Sprintf("Error while querying database for VolumeVersion: %+v", err))
 		return nil, err
 	}
-	if result == nil {
+	if len(results) == 0 {
 		return nil, nil
 	}
-	return volumeVersionModelToVO(c, result), nil
+	result := volumeVersionModelToVO(c, results[0])
+	reader.redactVolume(result)
+	return result, nil
 }
 
 // volumeVersionSubstantiveFields are the fields a submission can change and a review can
@@ -517,14 +523,12 @@ func RetractVolumeVersion(c context.Context, id string, version int, submitterID
 	if err != nil {
 		return nil, err
 	}
-	if submitted == nil {
-		return nil, fmt.Errorf("volume %s: version %d not found", id, version)
+	// Ownership comes before state, so a refusal says nothing about someone else's version.
+	if submitted == nil || !(VersionReader{UserID: submitterID}).owns(submitted.SubmittedBy) {
+		return nil, fmt.Errorf("volume %s: version %d: %w", id, version, ErrVersionNotFound)
 	}
 	if submitted.State != models.VersionStateSubmitted {
 		return nil, fmt.Errorf("volume %s: version %d is not submitted (state: %s)", id, version, submitted.State)
-	}
-	if submitted.SubmittedBy != submitterID {
-		return nil, fmt.Errorf("volume %s: version %d was not submitted by %s", id, version, submitterID)
 	}
 
 	if err := setVolumeVersionState(c, id, version, bson.D{

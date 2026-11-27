@@ -210,7 +210,7 @@ func (suite *VolumeDataTestSuite) TestUpdateVolumeLiveMovesCurrentVersion() {
 	assert.NotNil(suite.T(), fetched)
 	assert.Equal(suite.T(), "Updated Test Volume", fetched.Title)
 
-	versions, err := ListVolumeVersions(suite.T().Context(), suite.seedVolumeID)
+	versions, err := ListVolumeVersions(suite.T().Context(), suite.seedVolumeID, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), versions, 2)
 	assert.Equal(suite.T(), models.VersionStateArchived, models.VersionState(versions[1].State))
@@ -310,7 +310,7 @@ func (suite *VolumeDataTestSuite) TestListVolumeVersions() {
 	_, err := UpdateVolume(suite.T().Context(), suite.seedVolumeID, &vo.VolumeVO{Title: "V2"}, models.VersionStateLive)
 	assert.NoError(suite.T(), err)
 
-	versions, err := ListVolumeVersions(suite.T().Context(), suite.seedVolumeID)
+	versions, err := ListVolumeVersions(suite.T().Context(), suite.seedVolumeID, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), versions, 2)
 	assert.Equal(suite.T(), 2, versions[0].Version)
@@ -318,14 +318,14 @@ func (suite *VolumeDataTestSuite) TestListVolumeVersions() {
 }
 
 func (suite *VolumeDataTestSuite) TestGetVolumeVersion() {
-	version, err := GetVolumeVersion(suite.T().Context(), suite.seedVolumeID, 1)
+	version, err := GetVolumeVersion(suite.T().Context(), suite.seedVolumeID, 1, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), version)
 	assert.Equal(suite.T(), "Test Volume", version.Title)
 }
 
 func (suite *VolumeDataTestSuite) TestGetVolumeVersionNotFound() {
-	version, err := GetVolumeVersion(suite.T().Context(), suite.seedVolumeID, 99)
+	version, err := GetVolumeVersion(suite.T().Context(), suite.seedVolumeID, 99, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), version)
 }
@@ -362,7 +362,7 @@ func (suite *VolumeDataTestSuite) TestAcceptVolumeVersionSelectedFieldsDerivesNe
 	assert.Equal(suite.T(), "Submitted Title", accepted.Title)
 	assert.Equal(suite.T(), "This is a test volume.", accepted.Description)
 
-	original, err := GetVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version)
+	original, err := GetVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), models.VersionStatePartiallyAccepted, models.VersionState(original.State))
 	assert.NotNil(suite.T(), original.ResultingVersion)
@@ -400,7 +400,7 @@ func (suite *VolumeDataTestSuite) TestRejectVolumeVersion() {
 	err = RejectVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version, "editor-1", &note)
 	assert.NoError(suite.T(), err)
 
-	rejected, err := GetVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version)
+	rejected, err := GetVolumeVersion(suite.T().Context(), suite.seedVolumeID, submitted.Version, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), models.VersionStateRejected, models.VersionState(rejected.State))
 	assert.Equal(suite.T(), &note, rejected.ReviewNote)
@@ -424,7 +424,7 @@ func (suite *VolumeDataTestSuite) TestSetCurrentVolumeVersionRollback() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "Test Volume", fetched.Title)
 
-	v2, err := GetVolumeVersion(suite.T().Context(), suite.seedVolumeID, 2)
+	v2, err := GetVolumeVersion(suite.T().Context(), suite.seedVolumeID, 2, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), models.VersionStateArchived, models.VersionState(v2.State))
 }

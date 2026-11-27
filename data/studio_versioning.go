@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"go.mongodb.org/mongo-driver/bson"
 	"net/url"
 	"time"
 
@@ -123,26 +124,32 @@ func UpdateStudio(c context.Context, id string, studio *vo.StudioVO, state model
 	return studioVersionToVO(result), nil
 }
 
-// ListStudioVersions returns every version of a studio, newest first.
-func ListStudioVersions(c context.Context, id string) ([]*vo.StudioVersionVO, error) {
-	versions, err := studioVersioning.listVersions(c, id)
+// ListStudioVersions returns the versions of a studio that reader may see, newest first.
+func ListStudioVersions(c context.Context, id string, reader VersionReader) ([]*vo.StudioVersionVO, error) {
+	versions, err := studioVersioning.readVersions(c, bson.D{{Key: "record_id", Value: id}}, reader, 0)
 	if err != nil {
 		return nil, err
 	}
 	vos := make([]*vo.StudioVersionVO, 0, len(versions))
 	for _, v := range versions {
-		vos = append(vos, studioVersionToVO(v))
+		result := studioVersionToVO(v)
+		reader.redactLifecycle(&result.VersionLifecycleVO)
+		vos = append(vos, result)
 	}
 	return vos, nil
 }
 
-// GetStudioVersion returns one version's full snapshot.
-func GetStudioVersion(c context.Context, id string, version int) (*vo.StudioVersionVO, error) {
-	result, err := studioVersioning.getVersion(c, id, version)
-	if err != nil || result == nil {
+// GetStudioVersion returns one version's snapshot, regardless of whether it's current. It returns
+// nil for a version reader may not see, the same as for one that doesn't exist.
+func GetStudioVersion(c context.Context, id string, version int, reader VersionReader) (*vo.StudioVersionVO, error) {
+	filter := bson.D{{Key: "record_id", Value: id}, {Key: "version", Value: version}}
+	versions, err := studioVersioning.readVersions(c, filter, reader, 1)
+	if err != nil || len(versions) == 0 {
 		return nil, err
 	}
-	return studioVersionToVO(result), nil
+	result := studioVersionToVO(versions[0])
+	reader.redactLifecycle(&result.VersionLifecycleVO)
+	return result, nil
 }
 
 // AcceptStudioVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.

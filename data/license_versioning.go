@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"go.mongodb.org/mongo-driver/bson"
 	"net/url"
 	"time"
 
@@ -135,26 +136,32 @@ func UpdateLicense(c context.Context, id string, license *vo.LicenseVO, state mo
 	return licenseVersionToVO(result), nil
 }
 
-// ListLicenseVersions returns every version of a license, newest first.
-func ListLicenseVersions(c context.Context, id string) ([]*vo.LicenseVersionVO, error) {
-	versions, err := licenseVersioning.listVersions(c, id)
+// ListLicenseVersions returns the versions of a license that reader may see, newest first.
+func ListLicenseVersions(c context.Context, id string, reader VersionReader) ([]*vo.LicenseVersionVO, error) {
+	versions, err := licenseVersioning.readVersions(c, bson.D{{Key: "record_id", Value: id}}, reader, 0)
 	if err != nil {
 		return nil, err
 	}
 	vos := make([]*vo.LicenseVersionVO, 0, len(versions))
 	for _, v := range versions {
-		vos = append(vos, licenseVersionToVO(v))
+		result := licenseVersionToVO(v)
+		reader.redactLifecycle(&result.VersionLifecycleVO)
+		vos = append(vos, result)
 	}
 	return vos, nil
 }
 
-// GetLicenseVersion returns one version's full snapshot.
-func GetLicenseVersion(c context.Context, id string, version int) (*vo.LicenseVersionVO, error) {
-	result, err := licenseVersioning.getVersion(c, id, version)
-	if err != nil || result == nil {
+// GetLicenseVersion returns one version's snapshot, regardless of whether it's current. It returns
+// nil for a version reader may not see, the same as for one that doesn't exist.
+func GetLicenseVersion(c context.Context, id string, version int, reader VersionReader) (*vo.LicenseVersionVO, error) {
+	filter := bson.D{{Key: "record_id", Value: id}, {Key: "version", Value: version}}
+	versions, err := licenseVersioning.readVersions(c, filter, reader, 1)
+	if err != nil || len(versions) == 0 {
 		return nil, err
 	}
-	return licenseVersionToVO(result), nil
+	result := licenseVersionToVO(versions[0])
+	reader.redactLifecycle(&result.VersionLifecycleVO)
+	return result, nil
 }
 
 // AcceptLicenseVersion reviews a submitted version - see AcceptVolumeVersion's doc comment.

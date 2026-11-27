@@ -53,7 +53,7 @@ func (suite *EntityMigrationTestSuite) TestMigratePublishersBackfillsMetaAndLive
 	assert.Equal(suite.T(), "Legacy Publisher", fetched.Name)
 	assert.Equal(suite.T(), "auth0|original-creator", fetched.CreatedBy)
 
-	version, err := GetPublisherVersion(suite.T().Context(), legacy.ID, 1)
+	version, err := GetPublisherVersion(suite.T().Context(), legacy.ID, 1, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), version)
 	assert.Equal(suite.T(), models.VersionStateLive, models.VersionState(version.State))
@@ -72,7 +72,7 @@ func (suite *EntityMigrationTestSuite) TestMigratePublishersIsIdempotent() {
 	_, err = MigratePublishers(suite.T().Context())
 	assert.NoError(suite.T(), err)
 
-	versions, err := ListPublisherVersions(suite.T().Context(), legacy.ID)
+	versions, err := ListPublisherVersions(suite.T().Context(), legacy.ID, VersionReader{Reviewer: true})
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), versions, 1, "re-running the migration must not create a second version")
 }
